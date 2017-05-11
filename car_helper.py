@@ -47,3 +47,4 @@ def convert_img(img, dst, src='BRG'):
         feature_image = cv2.cvtColor(img, color_map[dst])
     else:
         feature_image = np.copy(img)
+    return feature_image
