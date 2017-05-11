@@ -162,6 +162,7 @@ class LaneLines(Pipeline):
             plt.imshow(img)
             plt.show()
 
+        assert img.shape == img_copy.shape
         return img 
 
     def edge_detection(self, img):

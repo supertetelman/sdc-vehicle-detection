@@ -18,7 +18,6 @@ from pipeline import Pipeline
 class CarWorld(Pipeline):
     def __init__(self):
         super().__init__()
-        print(self)
         self.lanes = lane_lines.LaneLines()
         self.vehicles = vehicle_detection.VehicleDetection()
         self.calibrate() # Calibration cannot occur until after super init
@@ -40,9 +39,11 @@ class CarWorld(Pipeline):
 
         # Identify Lanes
         lanes_img = self.lanes.pipeline(img)
+        assert lanes_img.shape == img.shape
 
         # Identify Cars
         vehicles_img = self.vehicles.pipeline(img)
+        assert vehicles_img.shape == img.shape
 
         # Combine Results
         img = car_helper.overlay_img(lanes_img, vehicles_img)
