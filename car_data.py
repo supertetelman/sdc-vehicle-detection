@@ -106,6 +106,7 @@ class CarData(object):
     def __repr__(self):
         return str({'cars': self.car_files, 'non-cars': self.non_car_files})
 
+
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
 
@@ -135,4 +136,3 @@ if __name__ == '__main__':
             plt.imshow(sample)
             i += 1
         plt.show()
-        
