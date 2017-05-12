@@ -3,6 +3,7 @@ import cv2
 import os
 import glob
 
+from sklearn.utils import shuffle
 
 class CarData(object):
     def __init__(self, size="small", gti=True, kitti=True, car_cat=[], non_cat=[]):
@@ -71,8 +72,8 @@ class CarData(object):
                 self.car_files += new_files
 
         # Shuffle dataset # TODO: add a seed value here 
-        np.random.shuffle(self.car_files)
-        np.random.shuffle(self.non_car_files)
+        shuffle(self.car_files)
+        shuffle(self.non_car_files)
 
     def get_dir_images(self, top_dir, dname, f_types=["*.jpeg", "*.png", "*.jpg"]):
         '''Given a top_level directory, subdirectory, and file types return glob'''
@@ -102,6 +103,12 @@ class CarData(object):
             objs.append(obj)
             n -= 1
         return objs
+
+    def get_class_data(self):
+        '''Return a shuffled list of files and their class'''
+        # Create a class array with 0==noncar, 1==car, shuffle it with the data
+        return shuffle(self.car_files + self.non_car_files,
+                [1] * len(self.car_files) + [0] * len(self.non_car_files))
 
     def __repr__(self):
         return str({'cars': self.car_files, 'non-cars': self.non_car_files})
