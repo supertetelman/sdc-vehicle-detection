@@ -34,6 +34,9 @@ class VehicleDetection(Pipeline):
         else:
             self.data = CarData(data)
 
+        # The location to save any new data files
+        self.data_file = os.path.join(self.results_dir, "detection_models.p")
+
         # fit-sized queue to store box coordinates of cars detected last n imgs
         self.cars =  deque(maxlen = n)
 
@@ -43,43 +46,132 @@ class VehicleDetection(Pipeline):
         # The blocks where a car has been detected
         self.current_blocks = None
 
+        # The raw data loaded from self.data and corresponding classes
+        self.img_data = None
+        self.img_class = None
+
+        # The split train/cv/test data
+        self.train_X = None
+        self.train_y = None
+        self.test_X = None
+        self.test_y = None
+
+        # Model parameters
+        self.spatial_size = (32, 32) # size for spacial features
+        self.hist_bins = 32 # Number of hist_bins to use
+        self.color = 'YCrCb' # Color space to convert images to
+
     def load_pickle(self, data_file):
         models = pickle.load(open(data_file, 'rb'))
         self.svm = models['svm']
         self.X_scaler = models['X_scaler']
 
     def save_pickle(self, data_file):
-        pickle.dumpe({'svm': self.svm, 'X_scaler': self.X_scaler},
+        pickle.dump({'svm': self.svm, 'X_scaler': self.X_scaler},
                 open(data_file, 'wb'))
 
     def train(self):
         # Initialize models
-        self.svc = LinearSVC()
+        self.svm = LinearSVC()
         self.X_scaler = StandardScaler()
 
-        # Split the data into train, validation, and test data
-        self.split_data()
+        print("Reading in all image data")
+        self.get_data()
 
-        # Extract features from the data
+        print("Extracting features from image data")
         self.extract_data_features()
 
-        # Train the scaler
-        self.train_scaler()
+        print("Training the X scaler")
+        self.X_scaler.fit(np.asarray(self.X).astype(np.float64))
 
-        # Train the svm
-        self.train_svm()
+        print("Scaling the X values")
+        self.X_scaler.transform(self.X)
 
-    def split_data(self):
-        # TODO:
-        pass
+        print("Splitting X, y features into train and test")
+        self.split_data()
+
+        print("Training the SVM with train data")
+        self.svm.fit(self.train_X, self.train_y)
+
+        print("Scoring the SVM")
+        acc = self.svm.score(self.test_X, self.test_y)
+        print("SVM test accuracy of %0.4f" %acc)
+
+        # Save the results
+        self.save_pickle(self.data_file)
+
+    def get_data(self):
+        '''Read in all the files stored in self.data as raw pixels'''
+        assert self.data is not None
+
+        # Initialize class variables to empty lists
+        self.img_data = []
+        self.img_class = []
+
+        # Append all images and classes to the lists
+        X, Y = self.data.get_class_data()
+        for x, y in zip(X, Y):
+            img = cv2.imread(x)
+            # TODO: resize image
+            self.img_class.append(y)
+            self.img_data.append(img)
 
     def extract_data_features(self):
-        # TODO:
-        pass
+        '''Convert the raw pixel data into handy-dandy features.
+        All of the raw data is under 300 MB, if we are duplicating this threefold
+        we can still expect everything to fit in under 1GB of ram.
+        '''
+        # Initialize Feature variable
+        self.X = []
 
-    def train_scaler(self):
-        # TODO:
-        pass
+        # Set some hog params
+        pix_per_cell = 8 # Size of square windows TODO: tune
+        cell_per_block = 2 # TODO: tune
+        orient = 9
+
+        # Iterate over all images
+        for img in self.img_data:
+            # Convert color space
+            img = car_helper.convert_img(img, self.color)
+
+            # Compute hog features for each color channel
+            hog1 = self.get_hog_features(img[:,:,0], orient, pix_per_cell, cell_per_block)
+            hog2 = self.get_hog_features(img[:,:,1], orient, pix_per_cell, cell_per_block)
+            hog3 = self.get_hog_features(img[:,:,2], orient, pix_per_cell, cell_per_block)
+
+            # Get spatial, color, and hog features from the image 
+            spatial_X = self.bin_spatial(img, self.spatial_size)
+            hist_X = self.color_hist(img, self.hist_bins)
+            hog_X = np.concatenate((hog1, hog2, hog3)).ravel()
+
+            # Stack and flatten everything into a single feature
+            X = np.concatenate((spatial_X, hist_X, hog_X))
+
+            # Set class variables  
+            self.X.append(X)
+
+        # Remove the raw data once features have been extraced
+        self.img_data = None
+        assert len(self.img_class) == len(self.X)
+
+    def split_data(self, test=0.33):
+        '''Split data into train/test/validation'''
+        count = len(self.X)
+
+        # Split the data into train, cv, and tesst
+        self.train_X, self.test_X, self.train_y, self.test_y = train_test_split(self.X,
+            self.img_class, test_size = test)
+        print("train dataset (%0.2f %%, %d), \
+            \ntest dataset (%0.2f %%, %d)" %(100 - (100 * test),
+                len(self.train_X), 100*test,
+                len(self.test_X)))
+
+        # Remove unsplit features and classes
+        self.X = None
+        self.img_class = None
+
+        #Verify nothing was lost
+        assert count == len(self.train_X) + len(self.test_X)
 
     def train_svm(self):
         # TODO:
@@ -101,13 +193,14 @@ class VehicleDetection(Pipeline):
         self.detect_cars(img)
 
         # Outline the currently detected cars
-        img = car_helper.draw_boxes(img, self.current_cars)
+        img = car_helper.draw_boxes(img, self.current_blocks)
+ #       img = car_helper.draw_boxes(img, self.current_cars)
 
         # Return the annoted image
         assert img_copy.shape == img.shape
         return img
 
-    def detect_blocks(self, img, color='YCrCb', hist_bins=32, spatial_size=(32, 32)):
+    def detect_blocks(self, img, hist_bins=32, spatial_size=(32, 32)):
         # Verify we have been trained
         assert self.svm is not None
         assert self.X_scaler is not None
@@ -129,11 +222,8 @@ class VehicleDetection(Pipeline):
         scale = 1
 
         # Convert from BRG to color
-        plt.imshow(img)
-        plt.show()
-        search_image = car_helper.convert_img(img, color)
-        plt.imshow(search_image)
-        plt.show()
+        search_image = car_helper.convert_img(img, self.color)
+
         # TODO: rescale image based on input?
 
         # Extract individual color channels
@@ -141,6 +231,11 @@ class VehicleDetection(Pipeline):
         ch2 = search_image[:,:,1]
         ch3 = search_image[:,:,2]
 
+        # Compute image-wide hog features for each channel
+        hog1 = self.get_hog_features(ch1, orient, pix_per_cell, cell_per_block)
+        hog2 = self.get_hog_features(ch2, orient, pix_per_cell, cell_per_block)
+        hog3 = self.get_hog_features(ch3, orient, pix_per_cell, cell_per_block)
+    
         # Define blocks and steps based on img size
         nxblocks = (ch1.shape[1] // pix_per_cell) - cell_per_block + 1
         nyblocks = (ch1.shape[0] // pix_per_cell) - cell_per_block + 1 
@@ -151,11 +246,6 @@ class VehicleDetection(Pipeline):
         nxsteps = (nxblocks - window_blocks) // cells_per_step
         nysteps = (nyblocks - window_blocks) // cells_per_step
 
-        # Compute image-wide hog features for each channel
-        hog1 = self.get_hog_features(ch1, orient, pix_per_cell, cell_per_block)
-        hog2 = self.get_hog_features(ch2, orient, pix_per_cell, cell_per_block)
-        hog3 = self.get_hog_features(ch3, orient, pix_per_cell, cell_per_block)
-    
         # Iterate over each x/y block pair
         for xb in range(nxsteps):
             for yb in range(nysteps):
@@ -172,7 +262,7 @@ class VehicleDetection(Pipeline):
                                  xpos:xpos + window_blocks].ravel() 
                 hog_feat3 = hog3[ypos:ypos + window_blocks,
                                  xpos:xpos + window_blocks].ravel() 
-                hog_X = np.hstack((hog_feat1, hog_feat2, hog_feat3))
+                hog_X = np.hstack((hog_feat1, hog_feat2, hog_feat3)).flatten()
 
                 # Extract the image patch for this block
                 subimg = cv2.resize(search_image[ytop:ytop + window_count, 
@@ -187,10 +277,10 @@ class VehicleDetection(Pipeline):
                         np.hstack((spatial_X, hist_X, hog_X)).reshape(1, -1))  
                 
                 # Predict on the flattened, scaled X
-                prediction = self.svc.predict(X)
+                prediction = self.svm.predict(X)
 
                 # IF a car was detected
-                if predcition == 1:
+                if prediction == 1:
                     # calculate the scaled window size
                     window_size = np.int(window_count * scale)
 
@@ -198,13 +288,13 @@ class VehicleDetection(Pipeline):
                     xl = np.int(xleft * scale)
                     xr = xl + window_size
                     yt = np.int(ytop * scale)
-                    yb = y_t + ystart + window_size
+                    yb = yt + ystart + window_size
 
                     # Create box coordinates with topleft/bottomright points
                     box = ((xl,yt), (xr, yb))
 
                     # Add box to current car_blocks list
-                    self.current_car_blocks.append(box)
+                    self.current_blocks.append(box)
 
     def calculate_heat(self, img):
     # TODO: Call some sort of heat function to clean up noise
@@ -235,10 +325,6 @@ class VehicleDetection(Pipeline):
         ch2_hist = np.histogram(img[:,:,1], bins=hist_bins, range=bins_range)
         ch3_hist = np.histogram(img[:,:,2], bins=hist_bins, range=bins_range)
         return np.concatenate((ch1_hist[0], ch2_hist[0], ch3_hist[0]))
-
-
-def bin_spatial(img, size=(32, 32)):
-    return cv2.resize(img, size).ravel() 
 
 
 if __name__ == '__main__':

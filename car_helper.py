@@ -2,13 +2,14 @@
 These helpers are used throught the modules in the CarWorld package
 '''
 import cv2
+import numpy as np
 
 
 def overlay_img(orig, update):
     '''Overlay an image over another image'''
     return cv2.addWeighted(orig, 1, update, 0.3, 0)
 
-def draw_box(img, boxpts, color=(0, 0, 255), thick=6):
+def draw_boxes(img, boxpts, color=(0, 0, 255), thick=6):
     '''Given an image and list of topleft/bottomright box pts, draw boxes'''
     assert img is not None
     if len(boxpts) <= 0:
