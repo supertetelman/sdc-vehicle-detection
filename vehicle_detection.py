@@ -28,16 +28,19 @@ class VehicleDetection(Pipeline):
         # The scaler trained to scale X input
         self.X_scaler = None
 
+        # The location to save any new data files
+        self.data_file = os.path.join(self.results_dir, "detection_models.p")
 
         # Load pre-trained models or load training data
         if data_file:
-            self.load_pickle(data_file) # Updates scaler and svm
+            # Use default file if they did not specify
+            if isinstance(data_file, str):
+                self.load_pickle(data_file) # Updates scaler and svm
+            else:
+                self.load_pickle(self.data_file)
             self.data = None
         else:
             self.data = CarData(data)
-
-        # The location to save any new data files
-        self.data_file = os.path.join(self.results_dir, "detection_models.p")
 
         # fit-sized queue to store box coordinates of cars detected last n imgs
         self.cars =  deque(maxlen = n)
