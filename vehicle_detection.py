@@ -11,6 +11,7 @@ import numpy as np
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import LinearSVC
 from sklearn.model_selection import train_test_split
+from scipy.ndimage.measurements import label
 
 import car_helper
 from pipeline import Pipeline
@@ -26,6 +27,7 @@ class VehicleDetection(Pipeline):
 
         # The scaler trained to scale X input
         self.X_scaler = None
+
 
         # Load pre-trained models or load training data
         if data_file:
@@ -55,6 +57,9 @@ class VehicleDetection(Pipeline):
         self.train_y = None
         self.test_X = None
         self.test_y = None
+
+        # A heatmap that is update each time a new image is processed
+        self.heatmap = None
 
         # Model parameters
         self.spatial_size = (32, 32) # size for spacial features
@@ -173,10 +178,6 @@ class VehicleDetection(Pipeline):
         #Verify nothing was lost
         assert count == len(self.train_X) + len(self.test_X)
 
-    def train_svm(self):
-        # TODO:
-        pass
-
     def pipeline(self, img):
         '''Given an image return an image with boxes drawn around all vehicles
         It is assumed that the incoming image is undistorted.
@@ -193,8 +194,7 @@ class VehicleDetection(Pipeline):
         self.detect_cars(img)
 
         # Outline the currently detected cars
-        img = car_helper.draw_boxes(img, self.current_blocks)
- #       img = car_helper.draw_boxes(img, self.current_cars)
+        img = car_helper.draw_boxes(img, self.current_cars)
 
         # Return the annoted image
         assert img_copy.shape == img.shape
@@ -219,6 +219,8 @@ class VehicleDetection(Pipeline):
         orient = 9
 
         # TODO: Verify image is scaled to 255 not 1
+
+        # TODO: Implement some scaling functionality to account for smaller things in the distance
         scale = 1
 
         # Convert from BRG to color
@@ -296,13 +298,51 @@ class VehicleDetection(Pipeline):
                     # Add box to current car_blocks list
                     self.current_blocks.append(box)
 
-    def calculate_heat(self, img):
-    # TODO: Call some sort of heat function to clean up noise
-        pass
+    def calculate_heat(self, img, threshold=3, debug=False):
+        '''Calculate a heat map based on all the blocks with cars in them'''
+        # Generate the heatmap if it does not exist, or decrement all values if it does
+        if self.heatmap is None:
+            self.heatmap = np.zeros_like(img).astype(np.float)
+        else:
+            self.heatmap[heatmap > 0] -= 1 # TODO: Tune this
 
-    def detect_cars(self, img):
-    # TODO: Call some sort of function to base current detections on history
-        pass
+        # Increment every pixel within a block by 1
+        for box in self.current_blocks:
+            self.heatmap[box[0][1]:box[1][1], box[0][0]:box[1][0]] += 1
+
+        # Reset every pixel that did not meet the threshold
+        self.heatmap[self.heatmap <= threshold] = 0
+
+        # Clip anything with a value over 255
+        np.clip(self.heatmap, 0, 255)
+
+        if debug:
+            plt.imshow(self.heatmap, cmap='gray')
+            plt.show()
+
+    def detect_cars(self, img, debug=False):
+        '''Use the heatmap to label cars and generate more accurate bounding boxes'''
+        # Initialize cars list
+        self.current_cars = []
+
+        # Label cars in the heatmap
+        labels = label(self.heatmap)
+
+        # Iterate over each car and calculate box coordinates
+        for car in range(1, labels[1] + 1): # add 1 because 0 is the non-car
+            car_y, car_x, car_z = (labels[0] == car).nonzero()
+            xt = np.min(car_x)
+            xb = np.max(car_x)
+            yl = np.min(car_y)
+            yr = np.max(car_y)
+            box = ((xt, yl),(xb, yr))
+            self.current_cars.append(box)
+
+        if debug:
+            plt.imshow(labels[0])
+            plt.show()
+
+        self.cars.extendleft(self.current_cars)
 
     def get_hog_features(self, img, orient, pix_per_cell, cell_per_block, vis=False):
         '''Given an image return the hog features
