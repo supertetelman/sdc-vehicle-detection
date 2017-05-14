@@ -372,10 +372,15 @@ class VehicleDetection(Pipeline):
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
-
-    img = cv2.imread(os.path.join("test_img", "test3.jpg"))
+    import glob
+    imgs = glob.glob(os.path.join("test_img",  "*"))
     vd = VehicleDetection()
     vd.train()
-    img = vd.pipeline(img)
-    plt.imshow(img)
-    plt.show()
+    for img_file in imgs:
+        print(img_file)
+        img = cv2.imread(img_file)
+        img2 = vd.pipeline(img)
+        plt.imshow(img)
+        plt.show()        
+        plt.imshow(img2)
+        plt.show()
