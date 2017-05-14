@@ -307,7 +307,7 @@ class VehicleDetection(Pipeline):
         if self.heatmap is None:
             self.heatmap = np.zeros_like(img).astype(np.float)
         else:
-            self.heatmap[heatmap > 0] -= 1 # TODO: Tune this
+            self.heatmap[self.heatmap > 0] -= 1 # TODO: Tune this
 
         # Increment every pixel within a block by 1
         for box in self.current_blocks:
