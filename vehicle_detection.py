@@ -212,9 +212,9 @@ class VehicleDetection(Pipeline):
         self.current_blocks = []
 
         # Don't scan the horizon for cars; they don't fly yet.
-        ystart = 0
-        # yend = 690 
-        # search_img = img[ystart:yend,:,:]
+        ystart = 390
+        yend = 690
+        search_img = img[ystart:yend,:,:]
 
         # Set some window size params
         pix_per_cell = 8 # Size of square windows TODO: tune
@@ -231,7 +231,7 @@ class VehicleDetection(Pipeline):
         scale = 1
 
         # Convert from BRG to color
-        search_image = car_helper.convert_img(img, self.color)
+        search_image = car_helper.convert_img(search_img, self.color)
 
         # TODO: rescale image based on input?
 
@@ -297,7 +297,7 @@ class VehicleDetection(Pipeline):
                     xl = np.int(xleft * scale)
                     xr = xl + window_size
                     yt = np.int(ytop * scale) + ystart
-                    yb = yt + window_size + ystart
+                    yb = yt + window_size
 
                     # Create box coordinates with topleft/bottomright points
                     box = ((xl,yt), (xr, yb))
