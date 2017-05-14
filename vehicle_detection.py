@@ -45,14 +45,14 @@ class VehicleDetection(Pipeline):
         # fit-sized queue to store box coordinates of cars detected last n imgs
         self.cars =  deque(maxlen = n)
 
-        # The currently identifed car points
+        # The currently identifed car boxes/points
         self.current_cars = None
 
-        # The blocks where a car has been detected
+        # The blocks where a car has currently been detected
         self.current_blocks = None
 
         # The raw data loaded from self.data and corresponding classes
-        self.img_data = None
+        self.img_data = None # XXX: gets reset to none after the data split
         self.img_class = None
 
         # The split train/cv/test data
@@ -62,7 +62,8 @@ class VehicleDetection(Pipeline):
         self.test_y = None
 
         # A heatmap that is update each time a new image is processed
-        self.heatmap = None
+        self.heatmap = None # Heatmap image that persists across instance life
+        self.threshold = 3 # The threshold at  which if n blocks overlap it is a car
 
         # Model parameters
         self.spatial_size = (32, 32) # size for spacial features
@@ -185,7 +186,7 @@ class VehicleDetection(Pipeline):
         '''Given an image return an image with boxes drawn around all vehicles
         It is assumed that the incoming image is undistorted.
         '''
-        img_copy = np.copy(img)
+        img_shape = img.shape
 
         # Detect cars in this image
         self.detect_blocks(img)
@@ -200,7 +201,7 @@ class VehicleDetection(Pipeline):
         img = car_helper.draw_boxes(img, self.current_cars)
 
         # Return the annoted image
-        assert img_copy.shape == img.shape
+        assert img_shape == img.shape
         return img
 
     def detect_blocks(self, img, hist_bins=32, spatial_size=(32, 32), scale=1):
@@ -210,8 +211,6 @@ class VehicleDetection(Pipeline):
 
         # Initialize the current list of detected car blocks
         self.current_blocks = []
-
-
 
         # Don't scan the horizon for cars; they don't fly yet.
         ystart = 390
@@ -308,7 +307,7 @@ class VehicleDetection(Pipeline):
                     # Add box to current car_blocks list
                     self.current_blocks.append(box)
 
-    def calculate_heat(self, img, threshold=3, debug=False):
+    def calculate_heat(self, img, debug=False):
         '''Calculate a heat map based on all the blocks with cars in them'''
         # Generate the heatmap if it does not exist, or decrement all values if it does
         if self.heatmap is None:
@@ -321,7 +320,7 @@ class VehicleDetection(Pipeline):
             self.heatmap[box[0][1]:box[1][1], box[0][0]:box[1][0]] += 1
 
         # Reset every pixel that did not meet the threshold
-        self.heatmap[self.heatmap <= threshold] = 0
+        self.heatmap[self.heatmap <= self.threshold] = 0
 
         # Clip anything with a value over 255
         np.clip(self.heatmap, 0, 255)
@@ -380,14 +379,16 @@ class VehicleDetection(Pipeline):
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     import glob
+    import time
+
     imgs = glob.glob(os.path.join("test_img",  "*"))
     vd = VehicleDetection()
     vd.train()
     for img_file in imgs:
         print(img_file)
         img = cv2.imread(img_file)
-        img2 = vd.pipeline(img)
+        s = time.time()
+        img = vd.pipeline(img)    
         plt.imshow(img)
-        plt.show()        
-        plt.imshow(img2)
+        plt.title("Vehicles Detected in %0.2f seconds" %(time.time()-s))
         plt.show()
