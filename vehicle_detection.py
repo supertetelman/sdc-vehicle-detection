@@ -203,13 +203,15 @@ class VehicleDetection(Pipeline):
         assert img_copy.shape == img.shape
         return img
 
-    def detect_blocks(self, img, hist_bins=32, spatial_size=(32, 32)):
+    def detect_blocks(self, img, hist_bins=32, spatial_size=(32, 32), scale=1):
         # Verify we have been trained
         assert self.svm is not None
         assert self.X_scaler is not None
 
         # Initialize the current list of detected car blocks
         self.current_blocks = []
+
+
 
         # Don't scan the horizon for cars; they don't fly yet.
         ystart = 390
@@ -227,13 +229,14 @@ class VehicleDetection(Pipeline):
         if np.max(search_img) <= 1:
             search_img = search_img * 255
 
-        # TODO: Implement some scaling functionality to account for smaller things in the distance
-        scale = 1
+        # TODO: Automatically  scale up towards the front and down towards the back
+        # Scale the image up/down to account for different sized objects up/down the horizon.
+        patch_shape = search_img.shape
+        if scale != 1: # Save some compute if no scaling is to be done
+            search_img = cv2.resize(search_img, (np.int(patch_shape[1]/scale), np.int(patch_shape[0]/scale)))
 
         # Convert from BRG to color
         search_image = car_helper.convert_img(search_img, self.color)
-
-        # TODO: rescale image based on input?
 
         # Extract individual color channels
         ch1 = search_image[:,:,0]
