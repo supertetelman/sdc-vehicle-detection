@@ -211,8 +211,10 @@ class VehicleDetection(Pipeline):
         # Initialize the current list of detected car blocks
         self.current_blocks = []
 
-        # TODO: Don't scan the horizon for cars; they don't fly yet.
-        ystart = 0 #Should be top of image
+        # Don't scan the horizon for cars; they don't fly yet.
+        ystart = 0
+        # yend = 690 
+        # search_img = img[ystart:yend,:,:]
 
         # Set some window size params
         pix_per_cell = 8 # Size of square windows TODO: tune
@@ -221,7 +223,9 @@ class VehicleDetection(Pipeline):
         cells_per_step = 2 # How many cells to step during window slide # TODO: tune
         orient = 9
 
-        # TODO: Verify image is scaled to 255 not 1
+        # Verify image is scaled to 255 not 1
+        if np.max(search_img) <= 1:
+            search_img = search_img * 255
 
         # TODO: Implement some scaling functionality to account for smaller things in the distance
         scale = 1
@@ -292,8 +296,8 @@ class VehicleDetection(Pipeline):
                     # Calculate the top/bottom/left/right corner points
                     xl = np.int(xleft * scale)
                     xr = xl + window_size
-                    yt = np.int(ytop * scale)
-                    yb = yt + ystart + window_size
+                    yt = np.int(ytop * scale) + ystart
+                    yb = yt + window_size + ystart
 
                     # Create box coordinates with topleft/bottomright points
                     box = ((xl,yt), (xr, yb))
