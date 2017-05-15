@@ -10,3 +10,7 @@ curl -o vehicles.zip https://s3.amazonaws.com/udacity-sdc/Vehicle_Tracking/vehic
 curl -o non-vehicles.zip https://s3.amazonaws.com/udacity-sdc/Vehicle_Tracking/non-vehicles.zip
 unzip vehicles.zip
 unzip non-vehicles.zip
+
+# These are 1.3 and 3 GB 
+curl -L -o object-detection.tar.gz http://bit.ly/udacity-annoations-crowdai
+curl -L -o object-dataset.tar.gz http://bit.ly/udacity-annotations-autti
