@@ -19,8 +19,18 @@ from car_data import CarData
 
 
 class VehicleDetection(Pipeline):
-    def __init__(self, data_file=False, data="small", n=10):
-        super().__init__()
+    '''The Pipeline is designed to detect and track objects over time. Specifically cars.
+    The first group of functions are related to training the models used in identification.
+    The second group of funtions are related to feature extraction and detecting cars.
+    The third group of functions are related to tracking and error correction over time.
+
+    Initialize with <data_file> as a trained model pickle file to load it or True to use the default,
+            Setting this fault will result in the <data> ("small" or "big") to load. This may take some time.
+
+    <n> says how many previous cars to remember, unrelated to heatmap, currently unimplemented
+    '''
+    def __init__(self, data_file=False, data="small", n=1):
+        super().__init__() # Initialize folder info, etc.
 
         # The Simple Vector Machine trained to detect cars
         self.svm = None
@@ -41,6 +51,11 @@ class VehicleDetection(Pipeline):
             self.data = None
         else:
             self.data = CarData(data)
+            # Set some HOG specific params for the model 
+            self.pix_per_cell = 8 # Number of pixels in an individual HOG cell XXX: Tunable
+            self.cell_per_block = 2 # Number of cells in a single block used by HOG XXX: Tunable
+            self.orient = 9 # Number of orientation bins. XXX: Tunable
+
 
         # fit-sized queue to store box coordinates of cars detected last n imgs
         self.cars =  deque(maxlen = n)
@@ -63,24 +78,43 @@ class VehicleDetection(Pipeline):
 
         # A heatmap that is update each time a new image is processed
         self.heatmap = None # Heatmap image that persists across instance life
-        self.threshold = 3 # The threshold at  which if n blocks overlap it is a car
+        self.threshold = 3 # The threshold at  which if n blocks overlap it is a car XXX: Tunable
+        self.heat_dec = -1 # The amount to reduce each pixel for a new heat map XXX: Tunable
 
         # Model parameters
-        self.spatial_size = (32, 32) # size for spacial features
-        self.hist_bins = 32 # Number of hist_bins to use
-        self.color = 'YCrCb' # Color space to convert images to
+        self.spatial_size = (32, 32) # size for spacial features XXX: Tunable
+        self.hist_bins = 32 # Number of hist_bins to use XXX: Tunable
+        self.color = 'YCrCb' # Color space to convert images to XXX: Tunable
+
 
     def load_pickle(self, data_file):
+        '''Load a pickle file and extract the model data'''
         models = pickle.load(open(data_file, 'rb'))
         self.svm = models['svm']
         self.X_scaler = models['X_scaler']
+        self.pix_per_cell = models['pix_per_cell']
+        self.orient = models['orient']
+        self.cell_per_block = models['cell_per_block']
+        assert self.svm is not None
+        assert self.X_scaler is not None
+        assert isinstance(self.cell_per_block, int)
+        assert isinstance(self.orient, int)
+        assert isinstance(self.pix_per_cell, int)
+        assert self.orient >= 2
+        assert self.pix_per_cell >= 1
+        assert self.cell_per_block >= 1
 
     def save_pickle(self, data_file):
-        pickle.dump({'svm': self.svm, 'X_scaler': self.X_scaler},
-                open(data_file, 'wb'))
+        '''Properly save the model data to a pickle file'''
+        assert self.svm is not None
+        assert self.X_scaler is not None
+        pickle.dump({'svm': self.svm, 'X_scaler': self.X_scaler,
+            'pix_per_cell': self.pix_per_cell, 'orient': self.orient,
+            'cell_per_block': self.cell_per_block }, open(data_file, 'wb'))
 
     def train(self):
-        # Initialize models
+        '''Top level function to create, train, and save the models'''
+        print("Initializing models.")
         self.svm = LinearSVC()
         self.X_scaler = StandardScaler()
 
@@ -93,20 +127,20 @@ class VehicleDetection(Pipeline):
         print("Training the X scaler")
         self.X_scaler.fit(np.asarray(self.X).astype(np.float64))
 
-        print("Scaling the X values")
+        print("Scaling the %d X values" %(len(self.X)))
         self.X_scaler.transform(self.X)
 
         print("Splitting X, y features into train and test")
         self.split_data()
 
-        print("Training the SVM with train data")
+        print("Training the SVM with train data of length %d" %(len(self.train_X)))
         self.svm.fit(self.train_X, self.train_y)
 
         print("Scoring the SVM")
         acc = self.svm.score(self.test_X, self.test_y)
         print("SVM test accuracy of %0.4f" %acc)
 
-        # Save the results
+        print("Saving data to %s" %(self.data_file))
         self.save_pickle(self.data_file)
 
     def get_data(self):
@@ -122,6 +156,8 @@ class VehicleDetection(Pipeline):
         for x, y in zip(X, Y):
             img = cv2.imread(x)
             # TODO: resize image
+            assert img is not None
+            assert len(img > 0)
             self.img_class.append(y)
             self.img_data.append(img)
 
@@ -133,20 +169,18 @@ class VehicleDetection(Pipeline):
         # Initialize Feature variable
         self.X = []
 
-        # Set some hog params
-        pix_per_cell = 8 # Size of square windows TODO: tune
-        cell_per_block = 2 # TODO: tune
-        orient = 9
-
         # Iterate over all images
         for img in self.img_data:
             # Convert color space
             img = car_helper.convert_img(img, self.color)
 
             # Compute hog features for each color channel
-            hog1 = self.get_hog_features(img[:,:,0], orient, pix_per_cell, cell_per_block)
-            hog2 = self.get_hog_features(img[:,:,1], orient, pix_per_cell, cell_per_block)
-            hog3 = self.get_hog_features(img[:,:,2], orient, pix_per_cell, cell_per_block)
+            hog1 = self.get_hog_features(img[:,:,0], self.orient,
+                    self.pix_per_cell, self.cell_per_block)
+            hog2 = self.get_hog_features(img[:,:,1], self.orient,
+                    self.pix_per_cell, self.cell_per_block)
+            hog3 = self.get_hog_features(img[:,:,2], self.orient,
+                    self.pix_per_cell, self.cell_per_block)
 
             # Get spatial, color, and hog features from the image 
             spatial_X = self.bin_spatial(img, self.spatial_size)
@@ -204,7 +238,18 @@ class VehicleDetection(Pipeline):
         assert img_shape == img.shape
         return img
 
-    def detect_blocks(self, img, hist_bins=32, spatial_size=(32, 32), scale=1):
+    def detect_blocks(self, img, scale=1, debug=False):
+        '''Generates hog features for entire img, slides over each window and 
+        uses subset of hog features in addition to spatial and color histogram 
+        features to predict whether a car is present using pretrained 
+        simple vector machine model and pretrained X value scaler.
+
+        HOG will generate a single gradient value for every <self.pix_per_cell> 
+            by <self.pix_per_cell> square  Blocks are used to navigate the HOG features
+        A total of <window_count> windows will be created
+            Each window will be <step_size> cells (<step_size> * self.pix_per_cell pixels) 
+                    right/down from the previous window
+        '''
         # Verify we have been trained
         assert self.svm is not None
         assert self.X_scaler is not None
@@ -213,16 +258,13 @@ class VehicleDetection(Pipeline):
         self.current_blocks = []
 
         # Don't scan the horizon for cars; they don't fly yet.
-        ystart = 390
-        yend = 690
+        ystart = 390 # removes most of the horizion XXX: Tunable
+        yend = 690 # removes the front of the car XXX: Tunable
         search_img = img[ystart:yend,:,:]
 
-        # Set some window size params
-        pix_per_cell = 8 # Size of square windows TODO: tune
-        cell_per_block = 2 # TODO: tune
-        window_count = 64 # Total number of windows # TODO: tune
-        cells_per_step = 2 # How many cells to step during window slide # TODO: tune
-        orient = 9
+        # Set the number of windows and steps between windows
+        window_count = 64 # Total number of windows XXX: Tunable
+        step_size = 2 # How man cells to slide right/down for each new window XXX: Tunable
 
         # Verify image is scaled to 255 not 1
         if np.max(search_img) <= 1:
@@ -232,7 +274,8 @@ class VehicleDetection(Pipeline):
         # Scale the image up/down to account for different sized objects up/down the horizon.
         patch_shape = search_img.shape
         if scale != 1: # Save some compute if no scaling is to be done
-            search_img = cv2.resize(search_img, (np.int(patch_shape[1]/scale), np.int(patch_shape[0]/scale)))
+            search_img = cv2.resize(search_img, (np.int(patch_shape[1]/scale),
+                                                 np.int(patch_shape[0]/scale)))
 
         # Convert from BRG to color
         search_image = car_helper.convert_img(search_img, self.color)
@@ -243,28 +286,33 @@ class VehicleDetection(Pipeline):
         ch3 = search_image[:,:,2]
 
         # Compute image-wide hog features for each channel
-        hog1 = self.get_hog_features(ch1, orient, pix_per_cell, cell_per_block)
-        hog2 = self.get_hog_features(ch2, orient, pix_per_cell, cell_per_block)
-        hog3 = self.get_hog_features(ch3, orient, pix_per_cell, cell_per_block)
+        hog1 = self.get_hog_features(ch1, self.orient,
+                self.pix_per_cell, self.cell_per_block)
+        hog2 = self.get_hog_features(ch2, self.orient,
+                self.pix_per_cell, self.cell_per_block)
+        hog3 = self.get_hog_features(ch3, self.orient,
+                self.pix_per_cell, self.cell_per_block)
     
         # Define blocks and steps based on img size
-        nxblocks = (ch1.shape[1] // pix_per_cell) - cell_per_block + 1
-        nyblocks = (ch1.shape[0] // pix_per_cell) - cell_per_block + 1 
-        nfeat_per_block = orient * cell_per_block**2
+        nxblocks = (ch1.shape[1] // self.pix_per_cell) - self.cell_per_block + 1
+        nyblocks = (ch1.shape[0] // self.pix_per_cell) - self.cell_per_block + 1 
+        nfeat_per_block = self.orient * self.cell_per_block**2
 
         # Calculate number of steps in the y/x directions and # blocks per window
-        window_blocks = (window_count // pix_per_cell) - cell_per_block + 1
-        nxsteps = (nxblocks - window_blocks) // cells_per_step
-        nysteps = (nyblocks - window_blocks) // cells_per_step
+        window_blocks = (window_count // self.pix_per_cell) - self.cell_per_block + 1
+        nxsteps = (nxblocks - window_blocks) // step_size
+        nysteps = (nyblocks - window_blocks) // step_size
 
         # Iterate over each x/y block pair
         for xb in range(nxsteps):
             for yb in range(nysteps):
-                # caluclate current y/x position and left/top
-                ypos = yb * cells_per_step
-                xpos = xb * cells_per_step
-                xleft = xpos * pix_per_cell
-                ytop = ypos * pix_per_cell
+                # Iterate from 0 to x/y and multipl
+                ypos = yb * step_size
+                xpos = xb * step_size
+
+                # Calculate positions used in img (hog collapsed px x px cells into single values)
+                xleft = xpos * self.pix_per_cell
+                ytop = ypos * self.pix_per_cell
 
                 # Extract and stack HOG features for this patch
                 hog_feat1 = hog1[ypos:ypos + window_blocks,
@@ -280,8 +328,8 @@ class VehicleDetection(Pipeline):
                         xleft:xleft + window_count], (64,64)) # TODO: Why is this 64?
 
                 # Get spatial and color features from the image patch
-                spatial_X = self.bin_spatial(subimg, spatial_size)
-                hist_X = self.color_hist(subimg, hist_bins)
+                spatial_X = self.bin_spatial(subimg, self.spatial_size)
+                hist_X = self.color_hist(subimg, self.hist_bins)
           
                 # Stack and flatten features, then scale them
                 X = self.X_scaler.transform(
@@ -289,6 +337,10 @@ class VehicleDetection(Pipeline):
                 
                 # Predict on the flattened, scaled X
                 prediction = self.svm.predict(X)
+
+                # For debug runs, add every box to the current_blocks list
+                if debug: 
+                    prediction = True
 
                 # IF a car was detected
                 if prediction == 1:
@@ -307,13 +359,17 @@ class VehicleDetection(Pipeline):
                     # Add box to current car_blocks list
                     self.current_blocks.append(box)
 
+    def reset_heat(self, img):
+        '''Reset the heatmap image'''
+        self.heatmap = np.zeros_like(img).astype(np.float)
+
     def calculate_heat(self, img, debug=False):
         '''Calculate a heat map based on all the blocks with cars in them'''
         # Generate the heatmap if it does not exist, or decrement all values if it does
         if self.heatmap is None:
-            self.heatmap = np.zeros_like(img).astype(np.float)
+            self.reset_heat(img)
         else:
-            self.heatmap[self.heatmap > 0] -= 1 # TODO: Tune this
+            self.heatmap[self.heatmap > 0] -= self.heat_dec
 
         # Increment every pixel within a block by 1
         for box in self.current_blocks:
@@ -347,11 +403,11 @@ class VehicleDetection(Pipeline):
             box = ((xt, yl),(xb, yr))
             self.current_cars.append(box)
 
-        if debug:
-            plt.imshow(labels[0])
-            plt.show()
-
         self.cars.extendleft(self.current_cars)
+
+        # Return labels[0] as an image
+        if debug:
+            return np.asarray(labels[0]).astype(np.float64)
 
     def get_hog_features(self, img, orient, pix_per_cell, cell_per_block, vis=False):
         '''Given an image return the hog features
@@ -384,11 +440,56 @@ if __name__ == '__main__':
     imgs = glob.glob(os.path.join("test_img",  "*"))
     vd = VehicleDetection()
     vd.train()
+
+    # Iterate over each test image and show each step in the process, then run the whole pipeline.
+    i = 0
     for img_file in imgs:
+        i += 1
         print(img_file)
+        # Create a figure for all 6 images
+        f = plt.figure()
+        plt.title("Steps of vehicle Detection")
+
+        # Load initial image
+        f.add_subplot(2,3,1)
         img = cv2.imread(img_file)
-        s = time.time()
-        img = vd.pipeline(img)    
         plt.imshow(img)
+
+        # Show all the Windows we are searching
+        f.add_subplot(2,3,2)
+        vd.detect_blocks(img, debug=True)
+        window_img = car_helper.draw_boxes(img, vd.current_blocks)
+        vd.reset_heat(img) # Reset this because the debug data made it bogus
+        plt.imshow(window_img)
+
+        # Show what the block detector found
+        f.add_subplot(2,3,3)
+        vd.detect_blocks(img, debug=False)
+        block_img = car_helper.draw_boxes(img, vd.current_blocks)
+        plt.imshow(block_img)
+
+        # Detect the image a few times to make the heat map more interesting, then show it
+        f.add_subplot(2,3,4)
+        vd.calculate_heat(img, debug=False)
+        plt.imshow(vd.heatmap, cmap='hot')
+
+        # Show the labels that were detected from the heat map data
+        f.add_subplot(2,3,5)
+        labels_img = vd.detect_cars(img, debug=True)
+        plt.imshow(labels_img, cmap='gray')
+        
+        # Show the final car outlines
+        f.add_subplot(2,3,6)
+        final_img = car_helper.draw_boxes(img, vd.current_cars)
+        plt.imshow(final_img)
+        plt.savefig(os.path.join(vd.results_dir, "%d-debug-img.jpg" %i))
+        plt.close()
+
+        # Run through the actual pipeline and time it
+        vd.reset_heat(img) # Reset this because the debug data made it bogus
+        s = time.time()
+        pipeline = vd.pipeline(img)    
+        plt.imshow(pipeline)
         plt.title("Vehicles Detected in %0.2f seconds" %(time.time()-s))
-        plt.show()
+        plt.savefig(os.path.join(vd.results_dir, "%d-final-output.jpg" %i))
+        plt.close()
