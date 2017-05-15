@@ -51,12 +51,31 @@ class VehicleDetection(Pipeline):
             self.data = None
         else:
             self.data = CarData(data)
+            ###### Start of tunable params ######
             # Set some HOG specific params for the model 
             self.pix_per_cell = 8 # Number of pixels in an individual HOG cell XXX: Tunable
             self.cell_per_block = 2 # Number of cells in a single block used by HOG XXX: Tunable
             self.orient = 9 # Number of orientation bins. XXX: Tunable
 
+        # A heatmap that is update each time a new image is processed
+        self.heatmap = None # Heatmap image that persists across instance life
+        self.threshold = 3 # The threshold at  which if n blocks overlap it is a car XXX: Tunable
+        self.heat_dec = -1 # The amount to reduce each pixel for a new heat map XXX: Tunable
 
+        # Model parameters
+        self.spatial_size = (32, 32) # size for spacial features XXX: Tunable
+        self.hist_bins = 32 # Number of hist_bins to use XXX: Tunable
+        self.color = 'YCrCb' # Color space to convert images to XXX: Tunable
+
+        # Search areas
+        self.ystart = 390 # removes most of the horizion XXX: Tunable
+        self.yend = 690 # removes the front of the car XXX: Tunable
+
+        # Sliding window variables
+        self.window_count = 64 # Total number of windows XXX: Tunable
+        self.step_size = 2 # How man cells to slide right/down for each new window XXX: Tunable
+        ###### End of tunable params ######
+       s 
         # fit-sized queue to store box coordinates of cars detected last n imgs
         self.cars =  deque(maxlen = n)
 
@@ -75,17 +94,6 @@ class VehicleDetection(Pipeline):
         self.train_y = None
         self.test_X = None
         self.test_y = None
-
-        # A heatmap that is update each time a new image is processed
-        self.heatmap = None # Heatmap image that persists across instance life
-        self.threshold = 3 # The threshold at  which if n blocks overlap it is a car XXX: Tunable
-        self.heat_dec = -1 # The amount to reduce each pixel for a new heat map XXX: Tunable
-
-        # Model parameters
-        self.spatial_size = (32, 32) # size for spacial features XXX: Tunable
-        self.hist_bins = 32 # Number of hist_bins to use XXX: Tunable
-        self.color = 'YCrCb' # Color space to convert images to XXX: Tunable
-
 
     def load_pickle(self, data_file):
         '''Load a pickle file and extract the model data'''
@@ -258,14 +266,14 @@ class VehicleDetection(Pipeline):
         self.current_blocks = []
 
         # Don't scan the horizon for cars; they don't fly yet.
-        ystart = 390 # removes most of the horizion XXX: Tunable
-        yend = 690 # removes the front of the car XXX: Tunable
+        ystart = self.ystart
+        yend = self.yend 
         search_img = img[ystart:yend,:,:]
 
         # Set the number of windows and steps between windows
-        window_count = 64 # Total number of windows XXX: Tunable
-        step_size = 2 # How man cells to slide right/down for each new window XXX: Tunable
-
+        window_count = self.window_count
+        step_size = self.step_size
+        
         # Verify image is scaled to 255 not 1
         if np.max(search_img) <= 1:
             search_img = search_img * 255
