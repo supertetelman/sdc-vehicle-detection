@@ -5,7 +5,6 @@ This class will
   run the data through various detection pipelines (lane/vehicle detection)
   return annoted output
 '''
-
 from moviepy.editor import VideoFileClip
 
 import lane_lines
@@ -19,7 +18,7 @@ class CarWorld(Pipeline):
     def __init__(self):
         super().__init__()
         self.lanes = lane_lines.LaneLines()
-        self.vehicles = vehicle_detection.VehicleDetection()
+        self.vehicles = vehicle_detection.VehicleDetection(True, "big")
         self.calibrate() # Calibration cannot occur until after super init
 
 
