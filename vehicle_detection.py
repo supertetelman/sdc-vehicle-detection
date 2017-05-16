@@ -68,14 +68,14 @@ class VehicleDetection(Pipeline):
         self.color = 'YCrCb' # Color space to convert images to XXX: Tunable
 
         # Search areas
-        self.ystart = 390 # removes most of the horizion XXX: Tunable
+        self.ystart = 540 # removes most of the horizion XXX: Tunable
         self.yend = 690 # removes the front of the car XXX: Tunable
 
         # Sliding window variables
         self.window_count = 64 # Total number of windows XXX: Tunable
         self.step_size = 2 # How man cells to slide right/down for each new window XXX: Tunable
         ###### End of tunable params ######
-       s 
+
         # fit-sized queue to store box coordinates of cars detected last n imgs
         self.cars =  deque(maxlen = n)
 
@@ -230,8 +230,11 @@ class VehicleDetection(Pipeline):
         '''
         img_shape = img.shape
 
+        # Reset detected blocks
+        self.current_blocks = []
+
         # Detect cars in this image
-        self.detect_blocks(img)
+        self.scaling_detect_blocks(img)
 
         # Create a heat map based on the detected car blocks
         self.calculate_heat(img)
@@ -246,7 +249,21 @@ class VehicleDetection(Pipeline):
         assert img_shape == img.shape
         return img
 
-    def detect_blocks(self, img, scale=1, debug=False):
+    def scaling_detect_blocks(self, img, debug=False):
+        '''Iterate from top to bottom of the "lane range" and detect cars of
+        increaseing size
+        '''
+        scale = 1
+        for end in range(self.ystart, img.shape[0], 50):
+            start = end - 200
+            self.detect_blocks(img, debug=debug, ystart=start, yend=end,
+                    scale=scale)
+            scale += 0.2
+        # Do one last check across the patch for the largest car size
+        self.detect_blocks(img, debug=debug, ystart=self.ystart,
+                yend=img.shape[0], scale=scale)
+
+    def detect_blocks(self, img, ystart=None, yend=None, scale=1, debug=False):
         '''Generates hog features for entire img, slides over each window and 
         uses subset of hog features in addition to spatial and color histogram 
         features to predict whether a car is present using pretrained 
@@ -262,12 +279,10 @@ class VehicleDetection(Pipeline):
         assert self.svm is not None
         assert self.X_scaler is not None
 
-        # Initialize the current list of detected car blocks
-        self.current_blocks = []
-
         # Don't scan the horizon for cars; they don't fly yet.
-        ystart = self.ystart
-        yend = self.yend 
+        if ystart is None or yend is None:
+            ystart = self.ystart
+            yend = self.yend
         search_img = img[ystart:yend,:,:]
 
         # Set the number of windows and steps between windows
@@ -308,8 +323,8 @@ class VehicleDetection(Pipeline):
 
         # Calculate number of steps in the y/x directions and # blocks per window
         window_blocks = (window_count // self.pix_per_cell) - self.cell_per_block + 1
-        nxsteps = (nxblocks - window_blocks) // step_size
-        nysteps = (nyblocks - window_blocks) // step_size
+        nxsteps = (nxblocks - window_blocks) // step_size + 1 # Round up
+        nysteps = (nyblocks - window_blocks) // step_size + 1 # Round up
 
         # Iterate over each x/y block pair
         for xb in range(nxsteps):
@@ -465,19 +480,23 @@ if __name__ == '__main__':
 
         # Show all the Windows we are searching
         f.add_subplot(2,3,2)
-        vd.detect_blocks(img, debug=True)
+        vd.current_blocks = [] # Reset this
+        vd.scaling_detect_blocks(img, debug=True)
         window_img = car_helper.draw_boxes(img, vd.current_blocks)
         vd.reset_heat(img) # Reset this because the debug data made it bogus
         plt.imshow(window_img)
 
         # Show what the block detector found
         f.add_subplot(2,3,3)
-        vd.detect_blocks(img, debug=False)
+        vd.current_blocks = [] # Reset this
+        vd.scaling_detect_blocks(img, debug=False)
         block_img = car_helper.draw_boxes(img, vd.current_blocks)
         plt.imshow(block_img)
 
         # Detect the image a few times to make the heat map more interesting, then show it
         f.add_subplot(2,3,4)
+        vd.scaling_detect_blocks(img, debug=False)
+        vd.scaling_detect_blocks(img, debug=False)
         vd.calculate_heat(img, debug=False)
         plt.imshow(vd.heatmap, cmap='hot')
 
