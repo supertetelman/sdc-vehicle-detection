@@ -82,10 +82,9 @@ class VehicleDetection(Pipeline):
         self.hist_channels = [0, 1, 2] # XXX: Tunable
 
         # Disable features
-        self.hist_dis = True
-        self.spatial_dis = True
-
-        # TODO: Add toggle to disable hog_features
+        self.hist_dis = False # XXX: Tunable
+        self.spatial_dis = False # XXX: Tunable
+        self.hog_dis = False # XXX: Tunable
 
         ###### End of tunable params ######
 
@@ -121,6 +120,8 @@ class VehicleDetection(Pipeline):
         assert isinstance(self.hist_channels, list) and len(self.hist_channels) > 0 and set(self.hist_channels).issubset([0,1,2])
         assert isinstance(self.spatial_dis, bool)
         assert isinstance(self.hist_dis, bool) 
+        assert isinstance(self.hog_dis, bool) 
+        assert not (self.hog_dis and self.spatial_dis and self.hist_dis)
 
     def load_pickle(self, data_file):
         '''Load a pickle file and extract the model data'''
@@ -135,6 +136,7 @@ class VehicleDetection(Pipeline):
         self.hist_channels = models['hist_channels']
         self.hist_dis = models['hist_dis']
         self.spatial_dis = models['spatial_dis']
+        self.hog_dis = models['hog_dis']
         self.validate_data()
 
     def save_pickle(self, data_file):
@@ -145,6 +147,7 @@ class VehicleDetection(Pipeline):
             'cell_per_block': self.cell_per_block, 
             'hog_channels': self.hog_channels, 
             'hist_dis': self.hist_dis, 'spatial_dis': self.spatial_dis,
+            'hog_dis': self.hog_dis,
             'hist_channels': self.hist_channels }, open(data_file, 'wb'))
 
     def train(self):
@@ -211,7 +214,7 @@ class VehicleDetection(Pipeline):
 
             # Compute hog features for each color channel
             hogs = self.get_hog_features(img, self.hog_channels, self.orient,
-                    self.pix_per_cell, self.cell_per_block)
+                    self.pix_per_cell, self.cell_per_block, disabled=self.hog_dis)
 
             # Get spatial, color, and hog features from the image 
             spatial_X = self.bin_spatial(img, self.spatial_size,
@@ -229,6 +232,15 @@ class VehicleDetection(Pipeline):
         # Remove the raw data once features have been extraced
         self.img_data = None
         assert len(self.img_class) == len(self.X)
+        self.print_data_stats()
+
+    def print_data_stats(self):
+        '''print some data about the training features'''
+        print("color histogram features disabled: %r" %self.hist_dis)
+        print("spatial features disabled: %r" %self.spatial_dis)
+        print("HOG features disabled: %r" %self.hog_dis)
+        print("Feature shape: %s" %str(self.X[0].shape))
+        print("Total # of samples: %d" %len(self.X))
 
     def split_data(self, test=0.33):
         '''Split data into train/test/validation'''
@@ -344,7 +356,7 @@ class VehicleDetection(Pipeline):
 
         # Compute image-wide hog features for each channel
         hogs = self.get_hog_features(img, self.hog_channels, self.orient,
-                self.pix_per_cell, self.cell_per_block)
+                self.pix_per_cell, self.cell_per_block, disabled=self.hog_dis)
     
         # Define blocks and steps based on img size
         nxblocks = (ch1.shape[1] // self.pix_per_cell) - self.cell_per_block + 1
@@ -368,11 +380,14 @@ class VehicleDetection(Pipeline):
                 ytop = ypos * self.pix_per_cell
 
                 # Extract and stack HOG features for this patch
-                hog_features = []
-                for hog in hogs:
-                    hog = hog[ypos:ypos + window_blocks,
-                              xpos:xpos + window_blocks].ravel()
-                    hog_features.append(hog)
+                if hogs is None:
+                    hog_features = None
+                else:
+                    hog_features = []
+                    for hog_ftr in hogs:
+                        hog_ftr = hog_ftr[ypos:ypos + window_blocks,
+                                  xpos:xpos + window_blocks].ravel()
+                        hog_features.append(hog_ftr)
                 hog_X = self.concat_ftrs(hog_features)
 
                 # Extract the image patch for this block
@@ -463,10 +478,13 @@ class VehicleDetection(Pipeline):
         if debug:
             return np.asarray(labels[0]).astype(np.float64)
 
-    def get_hog_features(self, img, channels, orient, pix_per_cell, cell_per_block, vis=False):
+    def get_hog_features(self, img, channels, orient, pix_per_cell,
+            cell_per_block, vis=False, disabled=False):
         '''Given an <img> return a list of hog features for the specified <channels>
         vis: set to true to get (features, vis_img) as response
         '''
+        if disabled:
+            return None
         hogs = []
         for ch in channels:
             hog_ftr = hog(img[:,:,ch], orientations=orient,
@@ -498,6 +516,8 @@ class VehicleDetection(Pipeline):
 
     def concat_ftrs(self, feature_list, ravel=True):
         '''Provide a consistent way of concatenating and flattening feature lists'''
+        if feature_list is None: # TODO: Clean this up, used for hog disabled
+            return None
         ftrs = np.concatenate(feature_list)
         if ravel:
             return ftrs.ravel()
