@@ -18,6 +18,7 @@ from pipeline import Pipeline
 from car_data import CarData
 
 
+# TODO: Implement using Deep Learning rather than SVM
 class VehicleDetection(Pipeline):
     '''The Pipeline is designed to detect and track objects over time. Specifically cars.
     The first group of functions are related to training the models used in identification.
@@ -395,16 +396,16 @@ class VehicleDetection(Pipeline):
                         hog_features.append(hog_ftr)
                 hog_X = self.concat_ftrs(hog_features)
 
-                # Extract the image patch for this block
+                # Extract the image patch for this block and resize it to model size
                 subimg = cv2.resize(search_image[ytop:ytop + window_count, 
-                        xleft:xleft + window_count], (64,64)) # TODO: Why is this 64?
+                        xleft:xleft + window_count], self.train_shape[0:2])
 
                 # Get spatial and color features from the image patch
                 spatial_X = self.bin_spatial(subimg, self.spatial_size,
                         disabled=self.spatial_dis)
                 hist_X = self.color_hist(subimg, self.hist_channels,
                         self.hist_bins, disabled=self.hist_dis)
-          
+
                 # Stack and flatten features, then scale them
                 X = self.X_scaler.transform(self.get_enabled_ftrs(
                             (spatial_X, hist_X, hog_X)).reshape(1, -1))
@@ -500,11 +501,14 @@ class VehicleDetection(Pipeline):
             hogs.append(hog_ftr)
         return hogs
 
-    def bin_spatial(self, img, spatial_size=(32, 32), disabled=False):
+    def bin_spatial(self, img, spatial_size=(32, 32), debug=False, disabled=False):
         '''Given an img return a resized and flattened vector'''
         if disabled:
             return None
-        return cv2.resize(img, spatial_size).ravel() 
+        ftr = cv2.resize(img, spatial_size)
+        if debug:
+            return ftr
+        return ftr.ravel()
 
     def color_hist(self, img, channels, hist_bins=32,
             bins_range=(0, 256), disabled=False, debug=False):
@@ -514,6 +518,9 @@ class VehicleDetection(Pipeline):
         hist_features = []
         for ch in channels:
             hist = np.histogram(img[:,:,ch], bins=hist_bins, range=bins_range)
+            if debug: # we need all the data in debug
+                hist_features.append(hist)
+                continue
             hist_features.append(hist[0])
         if debug:
             return  hist_features
@@ -540,8 +547,12 @@ if __name__ == '__main__':
     import time
 
     imgs = glob.glob(os.path.join("test_img",  "*"))
-    vd = VehicleDetection()
-    vd.train()
+
+    pretrained = False
+    size = "small"
+    vd = VehicleDetection(pretrained, size)
+    if not pretrained:
+        vd.train()
 
     # Iterate over each test image and show each step in the process, then run the whole pipeline.
     i = 0
@@ -567,15 +578,22 @@ if __name__ == '__main__':
         # TODO: Move all this feature extracting to a single spot
 
         # Plot spatial features
-        spatial_X = vd.bin_spatial(color_img, vd.spatial_size)
-        f.add_subplot(3,4,4)
-        plt.plot(spatial_X)
+        spatial_X = vd.bin_spatial(color_img, vd.spatial_size, debug=True)
+        print(spatial_X.shape)
+        f.add_subplot(3,4,3)
+        plt.imshow(spatial_X)
+        # TODO: plot comgined spqtial features?
+        # f.add_subplot(3,4,4)
+        # plt.plot(spatial_X)
 
         # Plot seperated color_histogram geatures
         hist_features = vd.color_hist(color_img, vd.hist_channels, vd.hist_bins, debug=True)
         for idx in range(0, len(vd.hist_channels)):
             f.add_subplot(3,4,5 + idx)
-            plt.plot(hist_features[idx])
+            # Format histogram data
+            bin_edges = hist_features[idx][1]
+            bin_centers = (bin_edges[1:]  + bin_edges[0:len(bin_edges) - 1])/2
+            plt.bar(bin_centers, hist_features[idx][0])
 
         # Compute hog features for each color channel and add it to subplot
         # Get a list of each hog feature and a corresponding visualization
