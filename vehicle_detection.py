@@ -60,7 +60,7 @@ class VehicleDetection(Pipeline):
         # A heatmap that is update each time a new image is processed
         self.heatmap = None # Heatmap image that persists across instance life
         self.threshold = 3 # The threshold at  which if n blocks overlap it is a car XXX: Tunable
-        self.heat_dec = -1 # The amount to reduce each pixel for a new heat map XXX: Tunable
+        self.heat_dec = 1 # The amount to reduce each pixel for a new heat map XXX: Tunable
 
         # Model parameters
         self.spatial_size = (32, 32) # size for spacial features XXX: Tunable
@@ -74,6 +74,9 @@ class VehicleDetection(Pipeline):
         # Sliding window variables
         self.window_count = 64 # Total number of windows XXX: Tunable
         self.step_size = 2 # How man cells to slide right/down for each new window XXX: Tunable
+
+        # TODO: Add tunable parameters for hog features to use
+        # TODO: Add tunable parameters to use/not use spatial/hist bin features
         ###### End of tunable params ######
 
         # fit-sized queue to store box coordinates of cars detected last n imgs
@@ -97,6 +100,7 @@ class VehicleDetection(Pipeline):
 
     def load_pickle(self, data_file):
         '''Load a pickle file and extract the model data'''
+        print("Loading vehicle detection data from %s" %data_file)
         models = pickle.load(open(data_file, 'rb'))
         self.svm = models['svm']
         self.X_scaler = models['X_scaler']
@@ -224,26 +228,37 @@ class VehicleDetection(Pipeline):
         #Verify nothing was lost
         assert count == len(self.train_X) + len(self.test_X)
 
-    def pipeline(self, img):
+    def pipeline(self, img, debug_all=False):
         '''Given an image return an image with boxes drawn around all vehicles
         It is assumed that the incoming image is undistorted.
         '''
         img_shape = img.shape
+        if debug_all:
+            imgs = {'img': img}
 
         # Reset detected blocks
         self.current_blocks = []
 
         # Detect cars in this image
         self.scaling_detect_blocks(img)
+        if debug_all:
+            blocks_img = car_helper.draw_boxes(img, self.current_blocks)
+            imgs['blocks'] = blocks_img
+         
 
         # Create a heat map based on the detected car blocks
         self.calculate_heat(img)
+        if debug_all:
+            imgs['heat'] = self.heatmap
 
         # Use the detected blocks, heat map, and previous data to detect cars
         self.detect_cars(img)
 
         # Outline the currently detected cars
         img = car_helper.draw_boxes(img, self.current_cars)
+        if debug_all:
+            imgs['final'] = img
+            return imgs
 
         # Return the annoted image
         assert img_shape == img.shape
