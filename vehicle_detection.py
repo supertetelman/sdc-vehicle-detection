@@ -86,6 +86,9 @@ class VehicleDetection(Pipeline):
         self.spatial_dis = False # XXX: Tunable
         self.hog_dis = False # XXX: Tunable
 
+        # The shape to resize training images to
+        self.train_shape = (64, 64, 3) # XXX: Tunable
+
         ###### End of tunable params ######
 
         # fit-sized queue to store box coordinates of cars detected last n imgs
@@ -193,7 +196,9 @@ class VehicleDetection(Pipeline):
         X, Y = self.data.get_class_data()
         for x, y in zip(X, Y):
             img = cv2.imread(x)
-            # TODO: resize image
+            # Resize everything to be consistent
+            if img.shape != self.train_shape:
+                img = cv2.resize(img, self.train_shape[0:2])
             assert img is not None
             assert len(img > 0)
             self.img_class.append(y)
