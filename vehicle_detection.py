@@ -76,13 +76,10 @@ class VehicleDetection(Pipeline):
         self.step_size = 2 # How man cells to slide right/down for each new window XXX: Tunable
 
         # Channels to use for hog features
-        # TODO: load this from/to pickle file
-        self.hog_channels = [0, 1, 2]
+        self.hog_channels = [0, 1, 2] # XXX: Tunable
 
         # Channels to use for histogram colors
-        # TODO: load this from/to pickle file
-        self.hist_chennels = [0, 1, 2]
-
+        self.hist_channels = [0, 1, 2] # XXX: Tunable
 
         # TODO: Add tunable parameters to use/not use spatial/hist bin features
         ###### End of tunable params ######
@@ -106,6 +103,18 @@ class VehicleDetection(Pipeline):
         self.test_X = None
         self.test_y = None
 
+    def validate_data(self):
+        assert self.svm is not None
+        assert self.X_scaler is not None
+        assert isinstance(self.cell_per_block, int)
+        assert isinstance(self.orient, int)
+        assert isinstance(self.pix_per_cell, int)
+        assert self.orient >= 2
+        assert self.pix_per_cell >= 1
+        assert self.cell_per_block >= 1
+        assert isinstance(self.hog_channels, list) and set(self.hog_channels).issubset([0,1,2])
+        assert isinstance(self.hist_channels, list) and set(self.hist_channels).issubset([0,1,2])
+
     def load_pickle(self, data_file):
         '''Load a pickle file and extract the model data'''
         print("Loading vehicle detection data from %s" %data_file)
@@ -115,22 +124,18 @@ class VehicleDetection(Pipeline):
         self.pix_per_cell = models['pix_per_cell']
         self.orient = models['orient']
         self.cell_per_block = models['cell_per_block']
-        assert self.svm is not None
-        assert self.X_scaler is not None
-        assert isinstance(self.cell_per_block, int)
-        assert isinstance(self.orient, int)
-        assert isinstance(self.pix_per_cell, int)
-        assert self.orient >= 2
-        assert self.pix_per_cell >= 1
-        assert self.cell_per_block >= 1
+        self.hog_channels = models['hog_channels']
+        self.hist_channels = models['hist_channels']
+        self.validate_data()
 
     def save_pickle(self, data_file):
         '''Properly save the model data to a pickle file'''
-        assert self.svm is not None
-        assert self.X_scaler is not None
+        self.validate_data()
         pickle.dump({'svm': self.svm, 'X_scaler': self.X_scaler,
             'pix_per_cell': self.pix_per_cell, 'orient': self.orient,
-            'cell_per_block': self.cell_per_block }, open(data_file, 'wb'))
+            'cell_per_block': self.cell_per_block, 
+            'hog_channels': self.hog_channels, 
+            'hist_channels': self.hist_channels }, open(data_file, 'wb'))
 
     def train(self):
         '''Top level function to create, train, and save the models'''
@@ -200,7 +205,7 @@ class VehicleDetection(Pipeline):
 
             # Get spatial, color, and hog features from the image 
             spatial_X = self.bin_spatial(img, self.spatial_size)
-            hist_X = self.color_hist(img, self.hist_bins)
+            hist_X = self.color_hist(img, self.hist_channels, self.hist_bins)
             hog_X = self.concat_ftrs(hogs)
 
             # Stack and flatten everything into a single feature
@@ -364,7 +369,7 @@ class VehicleDetection(Pipeline):
 
                 # Get spatial and color features from the image patch
                 spatial_X = self.bin_spatial(subimg, self.spatial_size)
-                hist_X = self.color_hist(subimg, self.hist_bins)
+                hist_X = self.color_hist(subimg, self.hist_channels, self.hist_bins)
           
                 # Stack and flatten features, then scale them
                 X = self.X_scaler.transform(self.concat_ftrs(
@@ -462,14 +467,14 @@ class VehicleDetection(Pipeline):
         '''Given an img return a resized and flattened vector'''
         return cv2.resize(img, spatial_size).ravel() 
 
-    def color_hist(self, img, hist_bins=32, bins_range=(0, 256), debug=False):
+    def color_hist(self, img, channels, hist_bins=32, bins_range=(0, 256), debug=False):
         '''Given a 3 channel img return a vectorized histogram of the channels'''
-        ch1_hist = np.histogram(img[:,:,0], bins=hist_bins, range=bins_range)
-        ch2_hist = np.histogram(img[:,:,1], bins=hist_bins, range=bins_range)
-        ch3_hist = np.histogram(img[:,:,2], bins=hist_bins, range=bins_range)
+        hist_features = []
+        for ch in channels:
+            hist = np.histogram(img[:,:,ch], bins=hist_bins, range=bins_range)
+            hist_features.append(hist[0])
         if debug:
-            return ch1_hist[0], ch2_hist[0], ch3_hist[0]
-        hist_features = (ch1_hist[0], ch2_hist[0], ch3_hist[0])
+            return  hist_features
         return self.concat_ftrs(hist_features, ravel=False)
 
     def concat_ftrs(self, feature_list, ravel=True):
@@ -516,15 +521,11 @@ if __name__ == '__main__':
         f.add_subplot(3,4,4)
         plt.plot(spatial_X)
 
-        # Plot combined and seperated color_histogram geatures
-        hist_X = vd.color_hist(color_img, vd.hist_bins)
-        hist1, hist2, hist3 = vd.color_hist(color_img, vd.hist_bins, debug=True)
-        f.add_subplot(3,4,5)
-        plt.plot(hist1)
-        f.add_subplot(3,4,6)
-        plt.plot(hist2)
-        f.add_subplot(3,4,7)
-        plt.plot(hist3)
+        # Plot seperated color_histogram geatures
+        hist_features = vd.color_hist(color_img, vd.hist_channels, vd.hist_bins, debug=True)
+        for idx in range(0, len(vd.hist_channels)):
+            f.add_subplot(3,4,5 + idx)
+            plt.plot(hist_features[idx])
 
         # Compute hog features for each color channel and add it to subplot
         # Get a list of each hog feature and a corresponding visualization
@@ -540,7 +541,7 @@ if __name__ == '__main__':
 
         ''' # TODO: Figure out an intuitive way to display these combined feature sets
         # Combine color_hist_features
-        f.add_subplot(3,4,8)
+        f.add_subplot(3,4,8)        
         hist_X = vd.concat_ftrs((hist1, hist2, hist3))
         # plt.plot(hist_X) # TODO:
 
