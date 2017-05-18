@@ -5,9 +5,14 @@ import cv2
 import numpy as np
 
 
-def overlay_img(orig, update):
+def overlay_img(orig, update, alpha=0.3):
     '''Overlay an image over another image'''
-    return cv2.addWeighted(orig, 1, update, 0.3, 0)
+    # If one of the images is gray scale and the other is RGB, convert to RGB
+    if len(orig.shape) > len(update.shape):
+        update = cv2.cvtColor(update, cv2.COLOR_GRAY2RGB)
+    elif len(orig.shape) < len(update.shape):
+        orig = cv2.cvtColor(orig, cv2.COLOR_GRAY2RGB)
+    return cv2.addWeighted(orig, 1, update, alpha, 0)
 
 def draw_boxes(img, boxpts, color=(0, 0, 255), thick=6):
     '''Given an image and list of topleft/bottomright box pts, draw boxes'''
