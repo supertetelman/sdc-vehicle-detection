@@ -75,9 +75,16 @@ class VehicleDetection(Pipeline):
         self.window_count = 64 # Total number of windows XXX: Tunable
         self.step_size = 2 # How man cells to slide right/down for each new window XXX: Tunable
 
-        # TODO: Add tunable parameters for hog features to use
+        # Channels to use for hog features
+        # TODO: load this from/to pickle file
+        self.hog_channels = [0, 1, 2]
+
+        # Channels to use for histogram colors
+        # TODO: load this from/to pickle file
+        self.hist_chennels = [0, 1, 2]
+
+
         # TODO: Add tunable parameters to use/not use spatial/hist bin features
-        # TODO: add tunable parameters to use/not use hist colors
         ###### End of tunable params ######
 
         # fit-sized queue to store box coordinates of cars detected last n imgs
@@ -188,20 +195,16 @@ class VehicleDetection(Pipeline):
             img = car_helper.convert_img(img, self.color)
 
             # Compute hog features for each color channel
-            hog1 = self.get_hog_features(img[:,:,0], self.orient,
-                    self.pix_per_cell, self.cell_per_block)
-            hog2 = self.get_hog_features(img[:,:,1], self.orient,
-                    self.pix_per_cell, self.cell_per_block)
-            hog3 = self.get_hog_features(img[:,:,2], self.orient,
+            hogs = self.get_hog_features(img, self.hog_channels, self.orient,
                     self.pix_per_cell, self.cell_per_block)
 
             # Get spatial, color, and hog features from the image 
             spatial_X = self.bin_spatial(img, self.spatial_size)
             hist_X = self.color_hist(img, self.hist_bins)
-            hog_X = np.concatenate((hog1, hog2, hog3)).ravel()
+            hog_X = self.concat_ftrs(hogs)
 
             # Stack and flatten everything into a single feature
-            X = np.concatenate((spatial_X, hist_X, hog_X))
+            X = self.concat_ftrs((spatial_X, hist_X, hog_X))
 
             # Set class variables  
             self.X.append(X)
@@ -321,15 +324,9 @@ class VehicleDetection(Pipeline):
 
         # Extract individual color channels
         ch1 = search_image[:,:,0]
-        ch2 = search_image[:,:,1]
-        ch3 = search_image[:,:,2]
 
         # Compute image-wide hog features for each channel
-        hog1 = self.get_hog_features(ch1, self.orient,
-                self.pix_per_cell, self.cell_per_block)
-        hog2 = self.get_hog_features(ch2, self.orient,
-                self.pix_per_cell, self.cell_per_block)
-        hog3 = self.get_hog_features(ch3, self.orient,
+        hogs = self.get_hog_features(img, self.hog_channels, self.orient,
                 self.pix_per_cell, self.cell_per_block)
     
         # Define blocks and steps based on img size
@@ -354,13 +351,12 @@ class VehicleDetection(Pipeline):
                 ytop = ypos * self.pix_per_cell
 
                 # Extract and stack HOG features for this patch
-                hog_feat1 = hog1[ypos:ypos + window_blocks,
-                                 xpos:xpos + window_blocks].ravel() 
-                hog_feat2 = hog2[ypos:ypos + window_blocks,
-                                 xpos:xpos + window_blocks].ravel() 
-                hog_feat3 = hog3[ypos:ypos + window_blocks,
-                                 xpos:xpos + window_blocks].ravel() 
-                hog_X = np.hstack((hog_feat1, hog_feat2, hog_feat3)).flatten()
+                hog_features = []
+                for hog in hogs:
+                    hog = hog[ypos:ypos + window_blocks,
+                              xpos:xpos + window_blocks].ravel()
+                    hog_features.append(hog)
+                hog_X = self.concat_ftrs(hog_features)
 
                 # Extract the image patch for this block
                 subimg = cv2.resize(search_image[ytop:ytop + window_count, 
@@ -371,8 +367,8 @@ class VehicleDetection(Pipeline):
                 hist_X = self.color_hist(subimg, self.hist_bins)
           
                 # Stack and flatten features, then scale them
-                X = self.X_scaler.transform(
-                        np.hstack((spatial_X, hist_X, hog_X)).reshape(1, -1))  
+                X = self.X_scaler.transform(self.concat_ftrs(
+                            (spatial_X, hist_X, hog_X)).reshape(1, -1))
                 
                 # Predict on the flattened, scaled X
                 prediction = self.svm.predict(X)
@@ -448,16 +444,19 @@ class VehicleDetection(Pipeline):
         if debug:
             return np.asarray(labels[0]).astype(np.float64)
 
-    def get_hog_features(self, img, orient, pix_per_cell, cell_per_block, vis=False):
-        '''Given an image return the hog features
+    def get_hog_features(self, img, channels, orient, pix_per_cell, cell_per_block, vis=False):
+        '''Given an <img> return a list of hog features for the specified <channels>
         vis: set to true to get (features, vis_img) as response
         '''
-        # TODO: test this works with vis = false/true
-        return hog(img, orientations=orient, 
-                                  pixels_per_cell=(pix_per_cell, pix_per_cell),
-                                  cells_per_block=(cell_per_block, cell_per_block), 
-                                  transform_sqrt=True, 
-                                  visualise=vis, feature_vector=False)
+        hogs = []
+        for ch in channels:
+            hog_ftr = hog(img[:,:,ch], orientations=orient,
+                    pixels_per_cell=(pix_per_cell, pix_per_cell),
+                    cells_per_block=(cell_per_block, cell_per_block),
+                    transform_sqrt=True,
+                    visualise=vis, feature_vector=False)
+            hogs.append(hog_ftr)
+        return hogs
 
     def bin_spatial(self, img, spatial_size=(32, 32)):
         '''Given an img return a resized and flattened vector'''
@@ -470,13 +469,15 @@ class VehicleDetection(Pipeline):
         ch3_hist = np.histogram(img[:,:,2], bins=hist_bins, range=bins_range)
         if debug:
             return ch1_hist[0], ch2_hist[0], ch3_hist[0]
-        return np.concatenate((ch1_hist[0], ch2_hist[0], ch3_hist[0]))
+        hist_features = (ch1_hist[0], ch2_hist[0], ch3_hist[0])
+        return self.concat_ftrs(hist_features, ravel=False)
 
-    def concat_ftrs(self, feature_list, debug=False):
+    def concat_ftrs(self, feature_list, ravel=True):
+        '''Provide a consistent way of concatenating and flattening feature lists'''
         ftrs = np.concatenate(feature_list)
-        if debug:
-            return ftrs
-        return ftrs.ravel()
+        if ravel:
+            return ftrs.ravel()
+        return ftrs
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
@@ -494,7 +495,7 @@ if __name__ == '__main__':
         print(img_file)
         # Create a figure for all 6 images
         f = plt.figure()
-        plt.title("Steps of vehicle Detection")
+        plt.title("Feature Extraction Steps")
 
         # Load initial image
         img = cv2.imread(img_file)
@@ -517,7 +518,7 @@ if __name__ == '__main__':
 
         # Plot combined and seperated color_histogram geatures
         hist_X = vd.color_hist(color_img, vd.hist_bins)
-        hist1, hist2, hist3 = hist_X = vd.color_hist(color_img, vd.hist_bins, debug=True)
+        hist1, hist2, hist3 = vd.color_hist(color_img, vd.hist_bins, debug=True)
         f.add_subplot(3,4,5)
         plt.plot(hist1)
         f.add_subplot(3,4,6)
@@ -526,14 +527,16 @@ if __name__ == '__main__':
         plt.plot(hist3)
 
         # Compute hog features for each color channel and add it to subplot
-        hogs = {}
-        hog_ftrs = []
-        for idx in range(0, 3):
-            f.add_subplot(3,4,9 + idx)
-            hogs[idx], hogs["%d-img" %idx] = vd.get_hog_features(color_img[:,:,idx], vd.orient,
+        # Get a list of each hog feature and a corresponding visualization
+        hogs_debug = vd.get_hog_features(color_img, vd.hog_channels, vd.orient,
                 vd.pix_per_cell, vd.cell_per_block, vis=True)
-            plt.imshow(hogs["%d-img" %idx])
-            hog_ftrs.append(hogs[idx])
+
+        # Plot each visualization and add the features to a list
+        hogs = []
+        for idx in range(0, len(vd.hog_channels)):
+            f.add_subplot(3,4,9 + idx)
+            hogs.append(hogs_debug[idx][0])
+            plt.imshow(hogs_debug[idx][1])
 
         ''' # TODO: Figure out an intuitive way to display these combined feature sets
         # Combine color_hist_features
@@ -544,18 +547,20 @@ if __name__ == '__main__':
 
         # Combine hog features and plot them
         f.add_subplot(3,4,12)
-        hog_X = vd.concat_ftrs(hog_ftrs)
+        hog_X = vd.concat_ftrs(hogs)
         # plt.plot(hog_X) # TODO:
 
         # Show X_scaled feature image # TODO:
         f.add_subplot(3,4,3)
-        #scaled_ftrs = vd.X_scaler.transform(np.hstack((spatial_X, hist_X, hog_X)).reshape(1, -1)) # TODO: copy/paste code
+        #scaled_ftrs = vd.X_scaler.transform(vd.concat_ftrs((spatial_X, hist_X, hog_X)).reshape(1, -1)) # TODO: copy/paste code
         #plt.plot(scaled_ftrs)
         '''
         plt.savefig(os.path.join(vd.results_dir, "%d-debug-features.jpg" %i))
         plt.close()
 
         # Create a 2x3 image with original img and block/car/heatmap/labels detection
+        f = plt.figure()
+        plt.title("Steps of vehicle Detection")
         f.add_subplot(2,3,1)
         plt.imshow(img)
 
