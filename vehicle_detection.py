@@ -77,6 +77,7 @@ class VehicleDetection(Pipeline):
 
         # TODO: Add tunable parameters for hog features to use
         # TODO: Add tunable parameters to use/not use spatial/hist bin features
+        # TODO: add tunable parameters to use/not use hist colors
         ###### End of tunable params ######
 
         # fit-sized queue to store box coordinates of cars detected last n imgs
@@ -462,13 +463,20 @@ class VehicleDetection(Pipeline):
         '''Given an img return a resized and flattened vector'''
         return cv2.resize(img, spatial_size).ravel() 
 
-    def color_hist(self, img, hist_bins=32, bins_range=(0, 256)):
+    def color_hist(self, img, hist_bins=32, bins_range=(0, 256), debug=False):
         '''Given a 3 channel img return a vectorized histogram of the channels'''
         ch1_hist = np.histogram(img[:,:,0], bins=hist_bins, range=bins_range)
         ch2_hist = np.histogram(img[:,:,1], bins=hist_bins, range=bins_range)
         ch3_hist = np.histogram(img[:,:,2], bins=hist_bins, range=bins_range)
+        if debug:
+            return ch1_hist[0], ch2_hist[0], ch3_hist[0]
         return np.concatenate((ch1_hist[0], ch2_hist[0], ch3_hist[0]))
 
+    def concat_ftrs(self, feature_list, debug=False):
+        ftrs = np.concatenate(feature_list)
+        if debug:
+            return ftrs
+        return ftrs.ravel()
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
@@ -489,8 +497,66 @@ if __name__ == '__main__':
         plt.title("Steps of vehicle Detection")
 
         # Load initial image
-        f.add_subplot(2,3,1)
         img = cv2.imread(img_file)
+
+        # Create a 2x3 plot with original img, spatial features, hist features and hog features
+        f.add_subplot(3,4,1)
+        plt.imshow(img)
+
+        # Conver img to different color_space
+        f.add_subplot(3,4,2)
+        color_img = car_helper.convert_img(img, vd.color)
+        plt.imshow(color_img)
+
+        # TODO: Move all this feature extracting to a single spot
+
+        # Plot spatial features
+        spatial_X = vd.bin_spatial(color_img, vd.spatial_size)
+        f.add_subplot(3,4,4)
+        plt.plot(spatial_X)
+
+        # Plot combined and seperated color_histogram geatures
+        hist_X = vd.color_hist(color_img, vd.hist_bins)
+        hist1, hist2, hist3 = hist_X = vd.color_hist(color_img, vd.hist_bins, debug=True)
+        f.add_subplot(3,4,5)
+        plt.plot(hist1)
+        f.add_subplot(3,4,6)
+        plt.plot(hist2)
+        f.add_subplot(3,4,7)
+        plt.plot(hist3)
+
+        # Compute hog features for each color channel and add it to subplot
+        hogs = {}
+        hog_ftrs = []
+        for idx in range(0, 3):
+            f.add_subplot(3,4,9 + idx)
+            hogs[idx], hogs["%d-img" %idx] = vd.get_hog_features(color_img[:,:,idx], vd.orient,
+                vd.pix_per_cell, vd.cell_per_block, vis=True)
+            plt.imshow(hogs["%d-img" %idx])
+            hog_ftrs.append(hogs[idx])
+
+        ''' # TODO: Figure out an intuitive way to display these combined feature sets
+        # Combine color_hist_features
+        f.add_subplot(3,4,8)
+        hist_X = vd.concat_ftrs((hist1, hist2, hist3))
+        # plt.plot(hist_X) # TODO:
+
+
+        # Combine hog features and plot them
+        f.add_subplot(3,4,12)
+        hog_X = vd.concat_ftrs(hog_ftrs)
+        # plt.plot(hog_X) # TODO:
+
+        # Show X_scaled feature image # TODO:
+        f.add_subplot(3,4,3)
+        #scaled_ftrs = vd.X_scaler.transform(np.hstack((spatial_X, hist_X, hog_X)).reshape(1, -1)) # TODO: copy/paste code
+        #plt.plot(scaled_ftrs)
+        '''
+        plt.savefig(os.path.join(vd.results_dir, "%d-debug-features.jpg" %i))
+        plt.close()
+
+        # Create a 2x3 image with original img and block/car/heatmap/labels detection
+        f.add_subplot(2,3,1)
         plt.imshow(img)
 
         # Show all the Windows we are searching
