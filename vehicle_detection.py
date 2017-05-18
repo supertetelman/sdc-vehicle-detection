@@ -81,7 +81,12 @@ class VehicleDetection(Pipeline):
         # Channels to use for histogram colors
         self.hist_channels = [0, 1, 2] # XXX: Tunable
 
-        # TODO: Add tunable parameters to use/not use spatial/hist bin features
+        # Disable features
+        self.hist_dis = True
+        self.spatial_dis = True
+
+        # TODO: Add toggle to disable hog_features
+
         ###### End of tunable params ######
 
         # fit-sized queue to store box coordinates of cars detected last n imgs
@@ -112,8 +117,10 @@ class VehicleDetection(Pipeline):
         assert self.orient >= 2
         assert self.pix_per_cell >= 1
         assert self.cell_per_block >= 1
-        assert isinstance(self.hog_channels, list) and set(self.hog_channels).issubset([0,1,2])
-        assert isinstance(self.hist_channels, list) and set(self.hist_channels).issubset([0,1,2])
+        assert isinstance(self.hog_channels, list) and len(self.hist_channels) > 0 and set(self.hog_channels).issubset([0,1,2])
+        assert isinstance(self.hist_channels, list) and len(self.hist_channels) > 0 and set(self.hist_channels).issubset([0,1,2])
+        assert isinstance(self.spatial_dis, bool)
+        assert isinstance(self.hist_dis, bool) 
 
     def load_pickle(self, data_file):
         '''Load a pickle file and extract the model data'''
@@ -126,15 +133,18 @@ class VehicleDetection(Pipeline):
         self.cell_per_block = models['cell_per_block']
         self.hog_channels = models['hog_channels']
         self.hist_channels = models['hist_channels']
+        self.hist_dis = models['hist_dis']
+        self.spatial_dis = models['spatial_dis']
         self.validate_data()
 
     def save_pickle(self, data_file):
         '''Properly save the model data to a pickle file'''
         self.validate_data()
-        pickle.dump({'svm': self.svm, 'X_scaler': self.X_scaler,
+        pickle.dump({ 'svm': self.svm, 'X_scaler': self.X_scaler,
             'pix_per_cell': self.pix_per_cell, 'orient': self.orient,
             'cell_per_block': self.cell_per_block, 
             'hog_channels': self.hog_channels, 
+            'hist_dis': self.hist_dis, 'spatial_dis': self.spatial_dis,
             'hist_channels': self.hist_channels }, open(data_file, 'wb'))
 
     def train(self):
@@ -204,12 +214,14 @@ class VehicleDetection(Pipeline):
                     self.pix_per_cell, self.cell_per_block)
 
             # Get spatial, color, and hog features from the image 
-            spatial_X = self.bin_spatial(img, self.spatial_size)
-            hist_X = self.color_hist(img, self.hist_channels, self.hist_bins)
+            spatial_X = self.bin_spatial(img, self.spatial_size,
+                    disabled=self.spatial_dis)
+            hist_X = self.color_hist(img, self.hist_channels,
+                    self.hist_bins, disabled=self.hist_dis)
             hog_X = self.concat_ftrs(hogs)
 
             # Stack and flatten everything into a single feature
-            X = self.concat_ftrs((spatial_X, hist_X, hog_X))
+            X = self.get_enabled_ftrs((spatial_X, hist_X, hog_X))
 
             # Set class variables  
             self.X.append(X)
@@ -368,11 +380,13 @@ class VehicleDetection(Pipeline):
                         xleft:xleft + window_count], (64,64)) # TODO: Why is this 64?
 
                 # Get spatial and color features from the image patch
-                spatial_X = self.bin_spatial(subimg, self.spatial_size)
-                hist_X = self.color_hist(subimg, self.hist_channels, self.hist_bins)
+                spatial_X = self.bin_spatial(subimg, self.spatial_size,
+                        disabled=self.spatial_dis)
+                hist_X = self.color_hist(subimg, self.hist_channels,
+                        self.hist_bins, disabled=self.hist_dis)
           
                 # Stack and flatten features, then scale them
-                X = self.X_scaler.transform(self.concat_ftrs(
+                X = self.X_scaler.transform(self.get_enabled_ftrs(
                             (spatial_X, hist_X, hog_X)).reshape(1, -1))
                 
                 # Predict on the flattened, scaled X
@@ -463,12 +477,17 @@ class VehicleDetection(Pipeline):
             hogs.append(hog_ftr)
         return hogs
 
-    def bin_spatial(self, img, spatial_size=(32, 32)):
+    def bin_spatial(self, img, spatial_size=(32, 32), disabled=False):
         '''Given an img return a resized and flattened vector'''
+        if disabled:
+            return None
         return cv2.resize(img, spatial_size).ravel() 
 
-    def color_hist(self, img, channels, hist_bins=32, bins_range=(0, 256), debug=False):
+    def color_hist(self, img, channels, hist_bins=32,
+            bins_range=(0, 256), disabled=False, debug=False):
         '''Given a 3 channel img return a vectorized histogram of the channels'''
+        if disabled:
+            return None
         hist_features = []
         for ch in channels:
             hist = np.histogram(img[:,:,ch], bins=hist_bins, range=bins_range)
@@ -483,6 +502,12 @@ class VehicleDetection(Pipeline):
         if ravel:
             return ftrs.ravel()
         return ftrs
+
+    def get_enabled_ftrs(self, feature_list):
+        '''Given a list of features remove the disabled None features and concat'''
+        valid_features = list(filter(lambda x: x is not None, feature_list))
+        return self.concat_ftrs(valid_features)
+
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
