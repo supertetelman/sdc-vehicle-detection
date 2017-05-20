@@ -17,6 +17,9 @@ import car_helper
 from pipeline import Pipeline
 from car_data import CarData
 
+import pdb
+
+import matplotlib.pyplot as plt
 
 # TODO: Implement using Deep Learning rather than SVM
 class VehicleDetection(Pipeline):
@@ -61,7 +64,8 @@ class VehicleDetection(Pipeline):
         # A heatmap that is update each time a new image is processed
         self.heatmap = None # Heatmap image that persists across instance life
         self.threshold = 3 # The threshold at  which if n blocks overlap it is a car XXX: Tunable
-        self.heat_dec = 1 # The amount to reduce each pixel for a new heat map XXX: Tunable
+        # XXX: Removed self.heat_dec = 1 # The amount to reduce each pixel for a new heat map XXX: Tunable
+        self.heatlist = deque(maxlen=5)
 
         # Model parameters
         self.spatial_size = (32, 32) # size for spacial features XXX: Tunable - makes sense to make this train_size
@@ -348,6 +352,11 @@ class VehicleDetection(Pipeline):
             yend = self.yend
         search_img = img[ystart:yend,:,:]
 
+        # Don't operate on a 0 chunk of image
+        if search_img.shape[0] == 0 or search_img.shape[1] == 0:
+            print("WARN: Invalid image size passed to detect_blocks")
+            return # TODO: clean this up
+
         # Set the number of windows and steps between windows
         window_count = self.window_count
         step_size = self.step_size
@@ -443,15 +452,18 @@ class VehicleDetection(Pipeline):
 
     def calculate_heat(self, img, debug=False):
         '''Calculate a heat map based on all the blocks with cars in them'''
-        # Generate the heatmap if it does not exist, or decrement all values if it does
-        if self.heatmap is None:
-            self.reset_heat(img)
-        else:
-            self.heatmap[self.heatmap > 0] -= self.heat_dec
+        # Create a zero image size of <imgs>
+        heatmap = np.zeros_like(img).astype(np.float)
 
         # Increment every pixel within a block by 1
         for box in self.current_blocks:
-            self.heatmap[box[0][1]:box[1][1], box[0][0]:box[1][0]] += 1
+            heatmap[box[0][1]:box[1][1], box[0][0]:box[1][0]] += 1
+
+        # Add the new heatmap to the last-n list of heatmaps
+        self.heatlist.appendleft(heatmap)
+
+        # Update the heatmap to be an average of the past n heatmaps
+        self.heatmap = np.average(self.heatlist, axis=0).astype(np.float)
 
         # Reset every pixel that did not meet the threshold
         self.heatmap[self.heatmap <= self.threshold] = 0
@@ -560,8 +572,8 @@ if __name__ == '__main__':
     # Iterate over each test image and show each step in the process, then run the whole pipeline.
     i = 0
     for img_file in imgs:
-        i += 1
         print(img_file)
+        i += 1
         # Create a figure for all 6 images
         f = plt.figure()
         plt.title("Feature Extraction Steps")
