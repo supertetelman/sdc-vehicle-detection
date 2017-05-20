@@ -25,9 +25,9 @@ def draw_boxes(img, boxpts, color=(0, 0, 255), thick=6):
         cv2.rectangle(draw_img, bbox[0], bbox[1], color, thick)
     return draw_img
 
-def convert_img(img, dst, src='BRG'):
+def convert_img(img, dst, src='BGR'):
     '''Convert an img from format src to format dst'''
-    if src == 'BRG':
+    if src == 'BGR':
         color_map = {
                 'HSV': cv2.COLOR_BGR2HSV,
                 'LUV':cv2.COLOR_BGR2LUV,

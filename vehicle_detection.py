@@ -64,7 +64,7 @@ class VehicleDetection(Pipeline):
         self.heat_dec = 1 # The amount to reduce each pixel for a new heat map XXX: Tunable
 
         # Model parameters
-        self.spatial_size = (32, 32) # size for spacial features XXX: Tunable
+        self.spatial_size = (32, 32) # size for spacial features XXX: Tunable - makes sense to make this train_size
         self.hist_bins = 32 # Number of hist_bins to use XXX: Tunable
         self.color = 'YCrCb' # Color space to convert images to XXX: Tunable
 
@@ -74,7 +74,7 @@ class VehicleDetection(Pipeline):
 
         # Sliding window variables
         self.window_count = 64 # Total number of windows XXX: Tunable
-        self.step_size = 2 # How man cells to slide right/down for each new window XXX: Tunable
+        self.step_size = 2 # How many cells to slide right/down for each new window XXX: Tunable
 
         # Channels to use for hog features
         self.hog_channels = [0, 1, 2] # XXX: Tunable
@@ -216,7 +216,7 @@ class VehicleDetection(Pipeline):
         # Iterate over all images
         for img in self.img_data:
             # Convert color space
-            img = car_helper.convert_img(img, self.color)
+            img = car_helper.convert_img(img, self.color, src="BGR") # training images are read with cv2 and thus BGR
 
             # Compute hog features for each color channel
             hogs = self.get_hog_features(img, self.hog_channels, self.orient,
@@ -267,13 +267,20 @@ class VehicleDetection(Pipeline):
         #Verify nothing was lost
         assert count == len(self.train_X) + len(self.test_X)
 
-    def pipeline(self, img, debug_all=False):
+    def pipeline(self, img, video=True, debug_all=False):
         '''Given an image return an image with boxes drawn around all vehicles
         It is assumed that the incoming image is undistorted.
         '''
+        original_img = np.copy(img)
         img_shape = img.shape
         if debug_all:
-            imgs = {'img': img}
+            imgs = {'img': original_img}
+
+        # Convert from BGR (for cv2 images) or RGB (for video) to self.color
+        src = 'RGB' if video else 'BGR'
+        img = car_helper.convert_img(img, self.color, src)
+        if debug_all:
+            imgs[self.color] = img
 
         # Reset detected blocks
         self.current_blocks = []
@@ -281,7 +288,7 @@ class VehicleDetection(Pipeline):
         # Detect cars in this image
         self.scaling_detect_blocks(img)
         if debug_all:
-            blocks_img = car_helper.draw_boxes(img, self.current_blocks)
+            blocks_img = car_helper.draw_boxes(original_img, self.current_blocks)
             imgs['blocks'] = blocks_img
          
 
@@ -294,7 +301,7 @@ class VehicleDetection(Pipeline):
         self.detect_cars(img)
 
         # Outline the currently detected cars
-        img = car_helper.draw_boxes(img, self.current_cars)
+        img = car_helper.draw_boxes(original_img, self.current_cars)
         if debug_all:
             imgs['final'] = img
             return imgs
@@ -329,6 +336,8 @@ class VehicleDetection(Pipeline):
             Each window will be <step_size> cells (<step_size> * self.pix_per_cell pixels) 
                     right/down from the previous window
         '''
+        search_img = img # TODO: Clean this up
+
         # Verify we have been trained
         assert self.svm is not None
         assert self.X_scaler is not None
@@ -354,19 +363,13 @@ class VehicleDetection(Pipeline):
             search_img = cv2.resize(search_img, (np.int(patch_shape[1]/scale),
                                                  np.int(patch_shape[0]/scale)))
 
-        # Convert from BRG to color
-        search_image = car_helper.convert_img(search_img, self.color)
-
-        # Extract individual color channels
-        ch1 = search_image[:,:,0]
-
         # Compute image-wide hog features for each channel
         hogs = self.get_hog_features(img, self.hog_channels, self.orient,
                 self.pix_per_cell, self.cell_per_block, disabled=self.hog_dis)
     
         # Define blocks and steps based on img size
-        nxblocks = (ch1.shape[1] // self.pix_per_cell) - self.cell_per_block + 1
-        nyblocks = (ch1.shape[0] // self.pix_per_cell) - self.cell_per_block + 1 
+        nxblocks = (search_img.shape[1] // self.pix_per_cell) - self.cell_per_block + 1
+        nyblocks = (search_img.shape[0] // self.pix_per_cell) - self.cell_per_block + 1
         nfeat_per_block = self.orient * self.cell_per_block**2
 
         # Calculate number of steps in the y/x directions and # blocks per window
@@ -397,7 +400,7 @@ class VehicleDetection(Pipeline):
                 hog_X = self.concat_ftrs(hog_features)
 
                 # Extract the image patch for this block and resize it to model size
-                subimg = cv2.resize(search_image[ytop:ytop + window_count, 
+                subimg = cv2.resize(search_img[ytop:ytop + window_count,
                         xleft:xleft + window_count], self.train_shape[0:2])
 
                 # Get spatial and color features from the image patch
@@ -572,14 +575,13 @@ if __name__ == '__main__':
 
         # Conver img to different color_space
         f.add_subplot(3,4,2)
-        color_img = car_helper.convert_img(img, vd.color)
+        color_img = car_helper.convert_img(img, vd.color, src='BGR')
         plt.imshow(color_img)
 
         # TODO: Move all this feature extracting to a single spot
 
         # Plot spatial features
         spatial_X = vd.bin_spatial(color_img, vd.spatial_size, debug=True)
-        print(spatial_X.shape)
         f.add_subplot(3,4,3)
         plt.imshow(spatial_X)
         # TODO: plot comgined spqtial features?
@@ -670,7 +672,7 @@ if __name__ == '__main__':
         # Run through the actual pipeline and time it
         vd.reset_heat(img) # Reset this because the debug data made it bogus
         s = time.time()
-        pipeline = vd.pipeline(img)    
+        pipeline = vd.pipeline(img, video = False)
         plt.imshow(pipeline)
         plt.title("Vehicles Detected in %0.2f seconds" %(time.time()-s))
         plt.savefig(os.path.join(vd.results_dir, "%d-final-output.jpg" %i))
