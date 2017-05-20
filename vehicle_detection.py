@@ -271,7 +271,7 @@ class VehicleDetection(Pipeline):
         #Verify nothing was lost
         assert count == len(self.train_X) + len(self.test_X)
 
-    def pipeline(self, img, video=True, debug_all=False):
+    def pipeline(self, img, video=True, blocks=False, debug_all=False):
         '''Given an image return an image with boxes drawn around all vehicles
         It is assumed that the incoming image is undistorted.
         '''
@@ -294,7 +294,8 @@ class VehicleDetection(Pipeline):
         if debug_all:
             blocks_img = car_helper.draw_boxes(original_img, self.current_blocks)
             imgs['blocks'] = blocks_img
-         
+        elif blocks:
+            return car_helper.draw_boxes(original_img, self.current_blocks)
 
         # Create a heat map based on the detected car blocks
         self.calculate_heat(img)
