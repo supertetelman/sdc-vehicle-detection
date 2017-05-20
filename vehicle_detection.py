@@ -130,6 +130,7 @@ class VehicleDetection(Pipeline):
         assert isinstance(self.hist_dis, bool) 
         assert isinstance(self.hog_dis, bool) 
         assert not (self.hog_dis and self.spatial_dis and self.hist_dis)
+        assert self.color is not None
 
     def load_pickle(self, data_file):
         '''Load a pickle file and extract the model data'''
@@ -145,6 +146,7 @@ class VehicleDetection(Pipeline):
         self.hist_dis = models['hist_dis']
         self.spatial_dis = models['spatial_dis']
         self.hog_dis = models['hog_dis']
+        self.color = models['color']
         self.validate_data()
 
     def save_pickle(self, data_file):
@@ -156,7 +158,8 @@ class VehicleDetection(Pipeline):
             'hog_channels': self.hog_channels, 
             'hist_dis': self.hist_dis, 'spatial_dis': self.spatial_dis,
             'hog_dis': self.hog_dis,
-            'hist_channels': self.hist_channels }, open(data_file, 'wb'))
+            'hist_channels': self.hist_channels,
+            'color': self.color }, open(data_file, 'wb'))
 
     def train(self):
         '''Top level function to create, train, and save the models'''
