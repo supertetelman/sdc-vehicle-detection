@@ -573,6 +573,22 @@ if __name__ == '__main__':
     if not pretrained:
         vd.train()
 
+    # Explore the HOG Feature params
+    img_file = imgs[1]
+    img = cv2.imread(img_file)
+    cv2.imwrite(os.path.join(vd.results_dir, "test-image.jpg"), img)
+    color_img = car_helper.convert_img(img, vd.color, src='BGR')
+    cv2.imwrite(os.path.join(vd.results_dir, "test-image-color.jpg"), color_img)
+
+    # Explore a range of HOG orient values
+    for orient in range(6,12):
+        # Compute hog features for each color channel and write it to an image
+        hogs_debug = vd.get_hog_features(color_img, [0, 1, 2], orient,
+                vd.pix_per_cell, vd.cell_per_block, vis=True)
+        for idx in range(0, 3):
+            hog_img = hogs_debug[idx][1]
+            cv2.imwrite(os.path.join(vd.results_dir, "hog-ch%d-orient%d.jpg" %(idx, orient)), hog_img*255)
+
     # Iterate over each test image and show each step in the process, then run the whole pipeline.
     i = 0
     for img_file in imgs:
@@ -656,14 +672,26 @@ if __name__ == '__main__':
         vd.current_blocks = [] # Reset this
         vd.scaling_detect_blocks(img, debug=True)
         window_img = car_helper.draw_boxes(img, vd.current_blocks)
+        cv2.imwrite(os.path.join(vd.results_dir, "%d-debug-windows.jpg"%i), window_img)
         vd.reset_heat(img) # Reset this because the debug data made it bogus
         plt.imshow(window_img)
+
+        # Show all the Windows we are searching, but with bigger gaps to make the scaling visible
+        vd.current_blocks = [] # Reset this
+        tmp = vd.step_size # Save this
+        vd.step_size = 100 # Set this to something big to make the block size easier to see
+        vd.scaling_detect_blocks(img, debug=True)
+        window_size_img = car_helper.draw_boxes(img, vd.current_blocks)
+        cv2.imwrite(os.path.join(vd.results_dir, "%d-debug-windows_size.jpg"%i), window_size_img)
+        vd.reset_heat(img) # Reset this because the debug data made it bogus
+        vd.step_size = tmp # Reset this
 
         # Show what the block detector found
         f.add_subplot(2,3,3)
         vd.current_blocks = [] # Reset this
         vd.scaling_detect_blocks(img, debug=False)
         block_img = car_helper.draw_boxes(img, vd.current_blocks)
+        cv2.imwrite(os.path.join(vd.results_dir, "%d-debug-blocks.jpg"%i), block_img)
         plt.imshow(block_img)
 
         # Detect the image a few times to make the heat map more interesting, then show it
@@ -671,12 +699,14 @@ if __name__ == '__main__':
         vd.scaling_detect_blocks(img, debug=False)
         vd.scaling_detect_blocks(img, debug=False)
         vd.calculate_heat(img, debug=False)
+        cv2.imwrite(os.path.join(vd.results_dir, "%d-debug-heat.jpg"%i), vd.heatmap)
         plt.imshow(vd.heatmap, cmap='hot')
 
         # Show the labels that were detected from the heat map data
         f.add_subplot(2,3,5)
         labels_img = vd.detect_cars(img, debug=True)
-        plt.imshow(labels_img, cmap='gray')
+        cv2.imwrite(os.path.join(vd.results_dir, "%d-debug-labels.jpg"%i), labels_img)
+        plt.imshow(labels_img, cmap='hot')
         
         # Show the final car outlines
         f.add_subplot(2,3,6)
