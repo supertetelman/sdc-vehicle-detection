@@ -114,7 +114,7 @@ class CarData(object):
         return str({'cars': self.car_files, 'non-cars': self.non_car_files})
 
 
-if __name__ == '__main__':
+def car_data_test():
     import matplotlib.pyplot as plt
 
     # Create datasets from different types of images
@@ -143,3 +143,6 @@ if __name__ == '__main__':
             plt.imshow(sample)
             i += 1
         plt.show()
+
+if __name__ == '__main__':
+    car_data_test()
