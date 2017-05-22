@@ -183,11 +183,10 @@ class VehicleDetection(Pipeline):
         self.split_data()
 
         print("Training the SVM with train data of length %d" %(len(self.train_X)))
-        self.svm.fit(self.train_X, self.train_y)
+        self.train_model()
 
         print("Scoring the SVM")
-        acc = self.svm.score(self.test_X, self.test_y)
-        print("SVM test accuracy of %0.4f" %acc)
+        self.score_model()
 
         print("Saving data to %s" %(self.data_file))
         self.save_pickle(self.data_file)
@@ -273,6 +272,15 @@ class VehicleDetection(Pipeline):
 
         #Verify nothing was lost
         assert count == len(self.train_X) + len(self.test_X)
+
+    def train_model(self):
+        self.svm.fit(self.train_X, self.train_y)
+
+    def score_model(self):
+        acc = self.svm.score(self.train_X, self.train_y)
+        print("SVM train accuracy of %0.4f" %acc)
+        acc = self.svm.score(self.test_X, self.test_y)
+        print("SVM test accuracy of %0.4f" %acc)
 
     def pipeline(self, img, video=True, blocks=False, debug_all=False):
         '''Given an image return an image with boxes drawn around all vehicles
