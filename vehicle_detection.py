@@ -589,14 +589,14 @@ if __name__ == '__main__':
 
     imgs = glob.glob(os.path.join("test_img",  "*"))
 
-    pretrained = False
+    pretrained = True
     size = "small"
     vd = VehicleDetection(pretrained, size)
     if not pretrained:
         vd.train()
 
     # Explore the HOG Feature params
-    if True:
+    if False:
         img_file = imgs[1]
         img = cv2.imread(img_file)
         cv2.imwrite(os.path.join(vd.results_dir, "test-image.jpg"), img)
@@ -633,108 +633,111 @@ if __name__ == '__main__':
         color_img = car_helper.convert_img(img, vd.color, src='BGR')
         plt.imshow(color_img)
 
-        # TODO: Move all this feature extracting to a single spot
+        if False: # Quick flag to remove timely debug
+            # TODO: Move all this feature extracting to a single spot
 
-        # Plot spatial features
-        spatial_X = vd.bin_spatial(color_img, vd.spatial_size, debug=True)
-        f.add_subplot(3,4,3)
-        plt.imshow(spatial_X)
+            # Plot spatial features
+            spatial_X = vd.bin_spatial(color_img, vd.spatial_size, debug=True)
+            f.add_subplot(3,4,3)
+            plt.imshow(spatial_X)
 
-        # Plot seperated color_histogram geatures
-        hist_features = vd.color_hist(color_img, vd.hist_channels, vd.hist_bins, debug=True)
-        for idx in range(0, len(vd.hist_channels)):
-            f.add_subplot(3,4,5 + idx)
-            # Format histogram data
-            bin_edges = hist_features[idx][1]
-            bin_centers = (bin_edges[1:]  + bin_edges[0:len(bin_edges) - 1])/2
-            plt.bar(bin_centers, hist_features[idx][0])
+            # Plot seperated color_histogram geatures
+            hist_features = vd.color_hist(color_img, vd.hist_channels, vd.hist_bins, debug=True)
+            for idx in range(0, len(vd.hist_channels)):
+                f.add_subplot(3,4,5 + idx)
+                # Format histogram data
+                bin_edges = hist_features[idx][1]
+                bin_centers = (bin_edges[1:]  + bin_edges[0:len(bin_edges) - 1])/2
+                plt.bar(bin_centers, hist_features[idx][0])
 
-        # Compute hog features for each color channel and add it to subplot
-        # Get a list of each hog feature and a corresponding visualization
-        hogs_debug = vd.get_hog_features(color_img, vd.hog_channels, vd.orient,
-                vd.pix_per_cell, vd.cell_per_block, vis=True)
+            # Compute hog features for each color channel and add it to subplot
+            # Get a list of each hog feature and a corresponding visualization
+            hogs_debug = vd.get_hog_features(color_img, vd.hog_channels, vd.orient,
+                    vd.pix_per_cell, vd.cell_per_block, vis=True)
 
-        # Plot each visualization and add the features to a list
-        hogs = []
-        for idx in range(0, len(vd.hog_channels)):
-            f.add_subplot(3,4,9 + idx)
-            hogs.append(hogs_debug[idx][0])
-            plt.imshow(hogs_debug[idx][1])
+            # Plot each visualization and add the features to a list
+            hogs = []
+            for idx in range(0, len(vd.hog_channels)):
+                f.add_subplot(3,4,9 + idx)
+                hogs.append(hogs_debug[idx][0])
+                plt.imshow(hogs_debug[idx][1])
 
-        ''' # TODO: Figure out an intuitive way to display these combined feature sets
-        # Combine color_hist_features
-        f.add_subplot(3,4,8)        
-        hist_X = vd.concat_ftrs((hist_features[0][0], hist_features[1][0], hist_features[2][0]))
-        plt.plot(hist_X) # TODO:
+            '''
+            # TODO: Figure out an intuitive way to display these combined feature sets
+            # Combine color_hist_features
+            f.add_subplot(3,4,8)        
+            hist_X = vd.concat_ftrs((hist_features[0][0], hist_features[1][0], hist_features[2][0]))
+            plt.plot(hist_X) # TODO:
 
+            # Combine hog features and plot them
+            f.add_subplot(3,4,12)
+            hog_X = vd.concat_ftrs((hogs[0][0], hogs[1][0], hogs[2][0]))
+            plt.plot(hog_X) # TODO:
 
-        # Combine hog features and plot them
-        f.add_subplot(3,4,12)
-        hog_X = vd.concat_ftrs((hogs[0][0], hogs[1][0], hogs[2][0]))
-        plt.plot(hog_X) # TODO:
+            # Show X_scaled feature image # TODO:
+            f.add_subplot(3,4,3)
+            scaled_ftrs = vd.X_scaler.transform(vd.concat_ftrs((spatial_X, hist_X, hog_X)).reshape(1, -1)) # TODO: copy/paste code
+            plt.plot(scaled_ftrs)
+            plt.savefig(os.path.join(vd.results_dir, "%d-debug-features.jpg" %i))
+            plt.close()
 
-        # Show X_scaled feature image # TODO:
-        f.add_subplot(3,4,3)
-        scaled_ftrs = vd.X_scaler.transform(vd.concat_ftrs((spatial_X, hist_X, hog_X)).reshape(1, -1)) # TODO: copy/paste code
-        plt.plot(scaled_ftrs)
-        '''
-        plt.savefig(os.path.join(vd.results_dir, "%d-debug-features.jpg" %i))
-        plt.close()
+            # Create a 2x3 image with original img and block/car/heatmap/labels detection
+            f = plt.figure()
+            plt.title("Steps of vehicle Detection")
+            f.add_subplot(2,3,1)
+            plt.imshow(img)
+            '''
 
-        # Create a 2x3 image with original img and block/car/heatmap/labels detection
-        f = plt.figure()
-        plt.title("Steps of vehicle Detection")
-        f.add_subplot(2,3,1)
-        plt.imshow(img)
+            # Show all the Windows we are searching
+            f.add_subplot(2,3,2)
+            vd.current_blocks = [] # Reset this
+            window_count = vd.scaling_detect_blocks(img, debug=True)
+            window_img = car_helper.draw_boxes(img, vd.current_blocks)
+            cv2.imwrite(os.path.join(vd.results_dir, "%d-debug-windows.jpg"%i), window_img)
+            vd.reset_heat(img) # Reset this because the debug data made it bogus
+            plt.imshow(window_img)
 
-        # Show all the Windows we are searching
-        f.add_subplot(2,3,2)
-        vd.current_blocks = [] # Reset this
-        window_count = vd.scaling_detect_blocks(img, debug=True)
-        window_img = car_helper.draw_boxes(img, vd.current_blocks)
-        cv2.imwrite(os.path.join(vd.results_dir, "%d-debug-windows.jpg"%i), window_img)
-        vd.reset_heat(img) # Reset this because the debug data made it bogus
-        plt.imshow(window_img)
+            # Show all the Windows we are searching, but with bigger gaps to make the scaling visible
+            vd.current_blocks = [] # Reset this
+            tmp = vd.step_size # Save this
+            vd.step_size = 100 # Set this to something big to make the block size easier to see
+            vd.scaling_detect_blocks(img, debug=True)
+            window_size_img = car_helper.draw_boxes(img, vd.current_blocks)
+            cv2.imwrite(os.path.join(vd.results_dir, "%d-debug-windows_size.jpg"%i), window_size_img)
+            vd.reset_heat(img) # Reset this because the debug data made it bogus
+            vd.step_size = tmp # Reset this
 
-        # Show all the Windows we are searching, but with bigger gaps to make the scaling visible
-        vd.current_blocks = [] # Reset this
-        tmp = vd.step_size # Save this
-        vd.step_size = 100 # Set this to something big to make the block size easier to see
-        vd.scaling_detect_blocks(img, debug=True)
-        window_size_img = car_helper.draw_boxes(img, vd.current_blocks)
-        cv2.imwrite(os.path.join(vd.results_dir, "%d-debug-windows_size.jpg"%i), window_size_img)
-        vd.reset_heat(img) # Reset this because the debug data made it bogus
-        vd.step_size = tmp # Reset this
+            # Show what the block detector found
+            f.add_subplot(2,3,3)
+            vd.current_blocks = [] # Reset this
+            vd.scaling_detect_blocks(img, debug=False)
+            block_img = car_helper.draw_boxes(img, vd.current_blocks)
+            cv2.imwrite(os.path.join(vd.results_dir, "%d-debug-blocks.jpg"%i), block_img)
+            plt.imshow(block_img)
 
-        # Show what the block detector found
-        f.add_subplot(2,3,3)
-        vd.current_blocks = [] # Reset this
-        vd.scaling_detect_blocks(img, debug=False)
-        block_img = car_helper.draw_boxes(img, vd.current_blocks)
-        cv2.imwrite(os.path.join(vd.results_dir, "%d-debug-blocks.jpg"%i), block_img)
-        plt.imshow(block_img)
+            # Detect the image a few times to make the heat map more interesting, then show it
+            f.add_subplot(2,3,4)
+            vd.scaling_detect_blocks(img, debug=False)
+            vd.scaling_detect_blocks(img, debug=False)
+            vd.calculate_heat(img, debug=False)
+            cv2.imwrite(os.path.join(vd.results_dir, "%d-debug-heat.jpg"%i), vd.heatmap)
+            plt.imshow(vd.heatmap, cmap='hot')
 
-        # Detect the image a few times to make the heat map more interesting, then show it
-        f.add_subplot(2,3,4)
-        vd.scaling_detect_blocks(img, debug=False)
-        vd.scaling_detect_blocks(img, debug=False)
-        vd.calculate_heat(img, debug=False)
-        cv2.imwrite(os.path.join(vd.results_dir, "%d-debug-heat.jpg"%i), vd.heatmap)
-        plt.imshow(vd.heatmap, cmap='hot')
-
-        # Show the labels that were detected from the heat map data
-        f.add_subplot(2,3,5)
-        labels_img = vd.detect_cars(img, debug=True)
-        cv2.imwrite(os.path.join(vd.results_dir, "%d-debug-labels.jpg"%i), labels_img)
-        plt.imshow(labels_img, cmap='hot')
-        
-        # Show the final car outlines
-        f.add_subplot(2,3,6)
-        final_img = car_helper.draw_boxes(img, vd.current_cars)
-        plt.imshow(final_img)
-        plt.savefig(os.path.join(vd.results_dir, "%d-debug-img.jpg" %i))
-        plt.close()
-
+            # Show the labels that were detected from the heat map data
+            f.add_subplot(2,3,5)
+            labels_img = vd.detect_cars(img, debug=True)
+            cv2.imwrite(os.path.join(vd.results_dir, "%d-debug-labels.jpg"%i), labels_img)
+            plt.imshow(labels_img, cmap='hot')
+            
+            # Show the final car outlines
+            f.add_subplot(2,3,6)
+            final_img = car_helper.draw_boxes(img, vd.current_cars)
+            plt.imshow(final_img)
+            plt.savefig(os.path.join(vd.results_dir, "%d-debug-img.jpg" %i))
+            plt.close()
+        else:
+            plt.close()
+            window_count = -1
         # Run through the actual pipeline and time it
         vd.reset_heat(img) # Reset this because the debug data made it bogus
         s = time.time()
