@@ -303,10 +303,10 @@ class VehicleDetection(Pipeline):
         # Detect cars in this image
         self.scaling_detect_blocks(img)
         if debug_all:
-            blocks_img = car_helper.draw_boxes(original_img, self.current_blocks)
+            blocks_img = car_helper.draw_boxes(original_img, self.current_blocks,  (52, 255, 20) ,thick=10)
             imgs['blocks'] = blocks_img
         elif blocks:
-            return car_helper.draw_boxes(original_img, self.current_blocks)
+            return car_helper.draw_boxes(original_img, self.current_blocks, (52, 255, 20) ,thick=15)
 
         # Create a heat map based on the detected car blocks
         self.calculate_heat(img)
@@ -317,7 +317,7 @@ class VehicleDetection(Pipeline):
         self.detect_cars(img)
 
         # Outline the currently detected cars
-        img = car_helper.draw_boxes(original_img, self.current_cars)
+        img = car_helper.draw_boxes(original_img, self.current_cars,  (52, 255, 20) ,thick=15)
         if debug_all:
             imgs['final'] = img
             return imgs
