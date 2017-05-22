@@ -340,11 +340,13 @@ class VehicleDetection(Pipeline):
         self.detect_blocks(img, debug=debug, ystart=self.ystart,
                 yend=img.shape[0], scale=scale)
 
-    def detect_blocks(self, img, ystart=None, yend=None, scale=1, debug=False):
+    def detect_blocks(self, img, ystart=None, yend=None, scale=1, count=0, debug=False):
         '''Generates hog features for entire img, slides over each window and 
         uses subset of hog features in addition to spatial and color histogram 
         features to predict whether a car is present using pretrained 
         simple vector machine model and pretrained X value scaler.
+
+        Returns the number of windows searched.
 
         HOG will generate a single gradient value for every <self.pix_per_cell> 
             by <self.pix_per_cell> square  Blocks are used to navigate the HOG features
@@ -367,7 +369,7 @@ class VehicleDetection(Pipeline):
         # Don't operate on a 0 chunk of image
         if search_img.shape[0] == 0 or search_img.shape[1] == 0:
             print("WARN: Invalid image size passed to detect_blocks")
-            return # TODO: clean this up
+            return count # TODO: clean this up
 
         # Set the number of windows and steps between windows
         window_count = self.window_count
@@ -401,6 +403,9 @@ class VehicleDetection(Pipeline):
         # Iterate over each x/y block pair
         for xb in range(nxsteps):
             for yb in range(nysteps):
+                # Increment window count
+                count += 1
+
                 # Iterate from 0 to x/y and multipl
                 ypos = yb * step_size
                 xpos = xb * step_size
@@ -457,6 +462,7 @@ class VehicleDetection(Pipeline):
 
                     # Add box to current car_blocks list
                     self.current_blocks.append(box)
+        return count
 
     def reset_heat(self, img):
         '''Reset the heatmap image'''
