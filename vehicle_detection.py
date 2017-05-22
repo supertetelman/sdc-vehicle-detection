@@ -249,10 +249,10 @@ class VehicleDetection(Pipeline):
 
     def print_data_stats(self):
         '''print some data about the training features'''
-        print("color histogram features disabled: %r" %self.hist_dis)
-        print("spatial features disabled: %r" %self.spatial_dis)
-        print("HOG features disabled: %r" %self.hog_dis)
-        print("Feature shape: %s" %str(self.X[0].shape))
+        print("color histogram (%d) features disabled: %r" %(self.hist_bins, self.hist_dis))
+        print("spatial features (%s) disabled: %r" %(str(self.spatial_size), self.spatial_dis))
+        print("HOG features size-%d orient-%d disabled: %r" %(self.window_count, self.orient, self.hog_dis))
+        print("Feature shape: %s color: %s" %(str(self.X[0].shape), self.color))
         print("Total # of samples: %d" %len(self.X))
 
     def split_data(self, test=0.33):
