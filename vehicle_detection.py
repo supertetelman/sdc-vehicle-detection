@@ -330,6 +330,13 @@ class VehicleDetection(Pipeline):
         '''Iterate from top to bottom of the "lane range" and detect cars of
         increaseing size
         '''
+
+        count = self.detect_blocks(img, debug=debug, ystart=360, yend=480, scale=1)
+        count = self.detect_blocks(img, debug=debug, ystart=400, yend=615, scale=2, count=count)
+        count = self.detect_blocks(img, debug=debug, ystart=400, yend=720, scale=3, count=count)
+        return count # Total number of windows searched
+
+        '''
         scale = 1
         for end in range(self.ystart, img.shape[0], 50):
             start = end - 200
@@ -339,6 +346,7 @@ class VehicleDetection(Pipeline):
         # Do one last check across the patch for the largest car size
         self.detect_blocks(img, debug=debug, ystart=self.ystart,
                 yend=img.shape[0], scale=scale)
+        '''
 
     def detect_blocks(self, img, ystart=None, yend=None, scale=1, count=0, debug=False):
         '''Generates hog features for entire img, slides over each window and 
@@ -658,19 +666,19 @@ if __name__ == '__main__':
         ''' # TODO: Figure out an intuitive way to display these combined feature sets
         # Combine color_hist_features
         f.add_subplot(3,4,8)        
-        hist_X = vd.concat_ftrs((hist1, hist2, hist3))
-        # plt.plot(hist_X) # TODO:
+        hist_X = vd.concat_ftrs((hist_features[0][0], hist_features[1][0], hist_features[2][0]))
+        plt.plot(hist_X) # TODO:
 
 
         # Combine hog features and plot them
         f.add_subplot(3,4,12)
-        hog_X = vd.concat_ftrs(hogs)
-        # plt.plot(hog_X) # TODO:
+        hog_X = vd.concat_ftrs((hogs[0][0], hogs[1][0], hogs[2][0]))
+        plt.plot(hog_X) # TODO:
 
         # Show X_scaled feature image # TODO:
         f.add_subplot(3,4,3)
-        #scaled_ftrs = vd.X_scaler.transform(vd.concat_ftrs((spatial_X, hist_X, hog_X)).reshape(1, -1)) # TODO: copy/paste code
-        #plt.plot(scaled_ftrs)
+        scaled_ftrs = vd.X_scaler.transform(vd.concat_ftrs((spatial_X, hist_X, hog_X)).reshape(1, -1)) # TODO: copy/paste code
+        plt.plot(scaled_ftrs)
         '''
         plt.savefig(os.path.join(vd.results_dir, "%d-debug-features.jpg" %i))
         plt.close()
