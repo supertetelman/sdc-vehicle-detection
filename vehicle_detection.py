@@ -596,20 +596,21 @@ if __name__ == '__main__':
         vd.train()
 
     # Explore the HOG Feature params
-    img_file = imgs[1]
-    img = cv2.imread(img_file)
-    cv2.imwrite(os.path.join(vd.results_dir, "test-image.jpg"), img)
-    color_img = car_helper.convert_img(img, vd.color, src='BGR')
-    cv2.imwrite(os.path.join(vd.results_dir, "test-image-color.jpg"), color_img)
+    if True:
+        img_file = imgs[1]
+        img = cv2.imread(img_file)
+        cv2.imwrite(os.path.join(vd.results_dir, "test-image.jpg"), img)
+        color_img = car_helper.convert_img(img, vd.color, src='BGR')
+        cv2.imwrite(os.path.join(vd.results_dir, "test-image-color.jpg"), color_img)
 
-    # Explore a range of HOG orient values
-    for orient in range(6,12):
-        # Compute hog features for each color channel and write it to an image
-        hogs_debug = vd.get_hog_features(color_img, [0, 1, 2], orient,
-                vd.pix_per_cell, vd.cell_per_block, vis=True)
-        for idx in range(0, 3):
-            hog_img = hogs_debug[idx][1]
-            cv2.imwrite(os.path.join(vd.results_dir, "hog-ch%d-orient%d.jpg" %(idx, orient)), hog_img*255)
+        # Explore a range of HOG orient values
+        for orient in range(6,12):
+            # Compute hog features for each color channel and write it to an image
+            hogs_debug = vd.get_hog_features(color_img, [0, 1, 2], orient,
+                    vd.pix_per_cell, vd.cell_per_block, vis=True)
+            for idx in range(0, 3):
+                hog_img = hogs_debug[idx][1]
+                cv2.imwrite(os.path.join(vd.results_dir, "hog-ch%d-orient%d.jpg" %(idx, orient)), hog_img*255)
 
     # Iterate over each test image and show each step in the process, then run the whole pipeline.
     i = 0
@@ -638,9 +639,6 @@ if __name__ == '__main__':
         spatial_X = vd.bin_spatial(color_img, vd.spatial_size, debug=True)
         f.add_subplot(3,4,3)
         plt.imshow(spatial_X)
-        # TODO: plot comgined spqtial features?
-        # f.add_subplot(3,4,4)
-        # plt.plot(spatial_X)
 
         # Plot seperated color_histogram geatures
         hist_features = vd.color_hist(color_img, vd.hist_channels, vd.hist_bins, debug=True)
