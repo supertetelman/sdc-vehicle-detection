@@ -363,8 +363,6 @@ class VehicleDetection(Pipeline):
             Each window will be <step_size> cells (<step_size> * self.pix_per_cell pixels) 
                     right/down from the previous window
         '''
-        search_img = img # TODO: Clean this up
-
         # Verify we have been trained
         assert self.svm is not None
         assert self.X_scaler is not None
@@ -373,10 +371,10 @@ class VehicleDetection(Pipeline):
         if ystart is None or yend is None:
             ystart = self.ystart
             yend = self.yend
-        search_img = img[ystart:yend,:,:]
+        img = img[ystart:yend,:,:]
 
         # Don't operate on a 0 chunk of image
-        if search_img.shape[0] == 0 or search_img.shape[1] == 0:
+        if img.shape[0] == 0 or img.shape[1] == 0:
             print("WARN: Invalid image size passed to detect_blocks")
             return count # TODO: clean this up
 
@@ -385,14 +383,14 @@ class VehicleDetection(Pipeline):
         step_size = self.step_size
         
         # Verify image is scaled to 255 not 1
-        if np.max(search_img) <= 1:
-            search_img = search_img * 255
+        if np.max(img) <= 1:
+            img = img * 255
 
         # TODO: Automatically  scale up towards the front and down towards the back
         # Scale the image up/down to account for different sized objects up/down the horizon.
-        patch_shape = search_img.shape
+        patch_shape = img.shape
         if scale != 1: # Save some compute if no scaling is to be done
-            search_img = cv2.resize(search_img, (np.int(patch_shape[1]/scale),
+            img = cv2.resize(img, (np.int(patch_shape[1]/scale),
                                                  np.int(patch_shape[0]/scale)))
 
         # Compute image-wide hog features for each channel
@@ -400,8 +398,8 @@ class VehicleDetection(Pipeline):
                 self.pix_per_cell, self.cell_per_block, disabled=self.hog_dis)
     
         # Define blocks and steps based on img size
-        nxblocks = (search_img.shape[1] // self.pix_per_cell) - self.cell_per_block + 2 # Round up +1, account for exclusive range +1
-        nyblocks = (search_img.shape[0] // self.pix_per_cell) - self.cell_per_block + 2 # Round up +1, account for exclusive range +1
+        nxblocks = (img.shape[1] // self.pix_per_cell) - self.cell_per_block + 2 # Round up +1, account for exclusive range +1
+        nyblocks = (img.shape[0] // self.pix_per_cell) - self.cell_per_block + 2 # Round up +1, account for exclusive range +1
         nfeat_per_block = self.orient * self.cell_per_block**2
 
         # Calculate number of steps in the y/x directions and # blocks per window
@@ -435,7 +433,7 @@ class VehicleDetection(Pipeline):
                 hog_X = self.concat_ftrs(hog_features)
 
                 # Extract the image patch for this block and resize it to model size
-                subimg = cv2.resize(search_img[ytop:ytop + window_count,
+                subimg = cv2.resize(img[ytop:ytop + window_count,
                         xleft:xleft + window_count], self.train_shape[0:2])
 
                 # Get spatial and color features from the image patch
