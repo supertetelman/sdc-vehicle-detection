@@ -381,8 +381,8 @@ class VehicleDetection(Pipeline):
                 self.pix_per_cell, self.cell_per_block, disabled=self.hog_dis)
     
         # Define blocks and steps based on img size
-        nxblocks = (search_img.shape[1] // self.pix_per_cell) - self.cell_per_block + 1
-        nyblocks = (search_img.shape[0] // self.pix_per_cell) - self.cell_per_block + 1
+        nxblocks = (search_img.shape[1] // self.pix_per_cell) - self.cell_per_block + 2 # Round up +1, account for exclusive range +1
+        nyblocks = (search_img.shape[0] // self.pix_per_cell) - self.cell_per_block + 2 # Round up +1, account for exclusive range +1
         nfeat_per_block = self.orient * self.cell_per_block**2
 
         # Calculate number of steps in the y/x directions and # blocks per window
