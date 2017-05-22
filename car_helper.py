@@ -25,7 +25,7 @@ def draw_boxes(img, boxpts, color=(0, 0, 255), thick=6):
         cv2.rectangle(draw_img, bbox[0], bbox[1], color, thick)
     return draw_img
 
-def convert_img(img, dst, src='BGR'):
+def convert_img(img, dst, src='BGR', blur=False):
     '''Convert an img from format src to format dst'''
     if src == 'BGR':
         color_map = {
@@ -53,4 +53,6 @@ def convert_img(img, dst, src='BGR'):
         feature_image = cv2.cvtColor(img, color_map[dst])
     else:
         feature_image = np.copy(img)
+    if blur:
+        feature_image = cv2.GaussianBlur(feature_image, blur, 0)
     return feature_image

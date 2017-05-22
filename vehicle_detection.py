@@ -93,6 +93,7 @@ class VehicleDetection(Pipeline):
 
         # The shape to resize training images to
         self.train_shape = (64, 64, 3) # XXX: Tunable
+        self.train_blur = False # XXX: Tunable, blur kernel applied to all images
 
         ###### End of tunable params ######
 
@@ -222,7 +223,7 @@ class VehicleDetection(Pipeline):
         # Iterate over all images
         for img in self.img_data:
             # Convert color space
-            img = car_helper.convert_img(img, self.color, src="BGR") # training images are read with cv2 and thus BGR
+            img = car_helper.convert_img(img, self.color, src="BGR", blur=self.train_blur) # training images are read with cv2 and thus BGR
 
             # Compute hog features for each color channel
             hogs = self.get_hog_features(img, self.hog_channels, self.orient,
@@ -293,7 +294,7 @@ class VehicleDetection(Pipeline):
 
         # Convert from BGR (for cv2 images) or RGB (for video) to self.color
         src = 'RGB' if video else 'BGR'
-        img = car_helper.convert_img(img, self.color, src)
+        img = car_helper.convert_img(img, self.color, src, blur=self.train_blur)
         if debug_all:
             imgs[self.color] = img
 
@@ -600,7 +601,7 @@ if __name__ == '__main__':
         img_file = imgs[1]
         img = cv2.imread(img_file)
         cv2.imwrite(os.path.join(vd.results_dir, "test-image.jpg"), img)
-        color_img = car_helper.convert_img(img, vd.color, src='BGR')
+        color_img = car_helper.convert_img(img, vd.color, src='BGR', blur=vd.train_blur)
         cv2.imwrite(os.path.join(vd.results_dir, "test-image-color.jpg"), color_img)
 
         # Explore a range of HOG orient values
@@ -630,7 +631,7 @@ if __name__ == '__main__':
 
         # Conver img to different color_space
         f.add_subplot(3,4,2)
-        color_img = car_helper.convert_img(img, vd.color, src='BGR')
+        color_img = car_helper.convert_img(img, vd.color, src='BGR', blur=vd.train_blur)
         plt.imshow(color_img)
 
         if False: # Quick flag to remove timely debug
