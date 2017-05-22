@@ -690,7 +690,7 @@ if __name__ == '__main__':
         # Show all the Windows we are searching
         f.add_subplot(2,3,2)
         vd.current_blocks = [] # Reset this
-        vd.scaling_detect_blocks(img, debug=True)
+        window_count = vd.scaling_detect_blocks(img, debug=True)
         window_img = car_helper.draw_boxes(img, vd.current_blocks)
         cv2.imwrite(os.path.join(vd.results_dir, "%d-debug-windows.jpg"%i), window_img)
         vd.reset_heat(img) # Reset this because the debug data made it bogus
@@ -740,6 +740,6 @@ if __name__ == '__main__':
         s = time.time()
         pipeline = vd.pipeline(img, video = False)
         plt.imshow(pipeline)
-        plt.title("Vehicles Detected in %0.2f seconds" %(time.time()-s))
+        plt.title("Vehicles Detected in %0.2f seconds. Searched over %d Windows." %(time.time()-s, window_count))
         plt.savefig(os.path.join(vd.results_dir, "%d-final-output.jpg" %i))
         plt.close()
