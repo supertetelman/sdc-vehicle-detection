@@ -59,7 +59,7 @@ class VehicleDetection(Pipeline):
             # Set some HOG specific params for the model 
             self.pix_per_cell = 8 # Number of pixels in an individual HOG cell XXX: Tunable
             self.cell_per_block = 2 # Number of cells in a single block used by HOG XXX: Tunable
-            self.orient = 9 # Number of orientation bins. XXX: Tunable
+            self.orient = 8 # Number of orientation bins. XXX: Tunable
 
         # A heatmap that is update each time a new image is processed
         self.heatmap = None # Heatmap image that persists across instance life
