@@ -398,8 +398,10 @@ class VehicleDetection(Pipeline):
                 self.pix_per_cell, self.cell_per_block, disabled=self.hog_dis)
     
         # Define blocks and steps based on img size
-        nxblocks = (img.shape[1] // self.pix_per_cell) - self.cell_per_block + 2 # Round up +1, account for exclusive range +1
-        nyblocks = (img.shape[0] // self.pix_per_cell) - self.cell_per_block + 2 # Round up +1, account for exclusive range +1
+        # TODO: Increment these by +2 to get the last part of the screen, then fix the bug where this causes sizing issues in the transform
+
+        nxblocks = (img.shape[1] // self.pix_per_cell) - self.cell_per_block + 1 # Round up +1, account for exclusive range +1
+        nyblocks = (img.shape[0] // self.pix_per_cell) - self.cell_per_block + 1 # Round up +1, account for exclusive range +1
         nfeat_per_block = self.orient * self.cell_per_block**2
 
         # Calculate number of steps in the y/x directions and # blocks per window
@@ -740,7 +742,7 @@ if __name__ == '__main__':
         # Run through the actual pipeline and time it
         vd.reset_heat(img) # Reset this because the debug data made it bogus
         s = time.time()
-        pipeline = vd.pipeline(img, video = False)
+        pipeline = vd.pipeline(img, blocks = False, video = False)
         plt.imshow(pipeline)
         plt.title("Vehicles Detected in %0.2f seconds. Searched over %d Windows." %(time.time()-s, window_count))
         plt.savefig(os.path.join(vd.results_dir, "%d-final-output.jpg" %i))
