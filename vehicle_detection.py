@@ -68,8 +68,8 @@ class VehicleDetection(Pipeline):
         self.heatlist = deque(maxlen=5)
 
         # Model parameters
-        self.spatial_size = (32, 32) # size for spacial features XXX: Tunable - makes sense to make this train_size
-        self.hist_bins = 32 # Number of hist_bins to use XXX: Tunable
+        self.spatial_size = (16, 16) # size for spacial features XXX: Tunable - makes sense to make this train_size
+        self.hist_bins = 64 # Number of hist_bins to use XXX: Tunable
         self.color = 'YCrCb' # Color space to convert images to XXX: Tunable
 
         # Search areas
@@ -77,8 +77,8 @@ class VehicleDetection(Pipeline):
         self.yend = 690 # removes the front of the car XXX: Tunable
 
         # Sliding window variables
-        self.window_count = 64 # Total number of windows XXX: Tunable
-        self.step_size = 2 # How many cells to slide right/down for each new window XXX: Tunable
+        self.window_count = 64 # Total number of windows XXX: Tunable # TODO: This is called window_count but it is actually window_size
+        self.step_size = 2 # This did well at 2 and 3 # How many cells to slide right/down for each new window XXX: Tunable
 
         # Channels to use for hog features
         self.hog_channels = [0, 1, 2] # XXX: Tunable
@@ -590,8 +590,8 @@ if __name__ == '__main__':
 
     imgs = glob.glob(os.path.join("test_img",  "*"))
 
-    pretrained = True
-    size = "small"
+    pretrained = False
+    size = "big"
     vd = VehicleDetection(pretrained, size)
     if not pretrained:
         vd.train()
