@@ -174,19 +174,19 @@ During the pipeline I do something slightly different. the training images are 6
 
 I chose 2 cells per block and 8 pixels per cell somewhat arbitrarly. They are the values I started with and seemed to do well; changing these values may very well yeild more effiecient results.
 
-I chose 9 orientation bins based off how "edgy" the visulations looked.
+I chose 8 orientation bins based off how "edgy" the visulations looked. I tried using 9 for a large portion of the testing, however 8 gave better end results.
 
-I chose a window_count of 64 because the train images were 64x64 so it seemed to make sense that a 64x64 window should capture a whole care.
+I chose a window_size of 64 because the train images were 64x64 so it seemed to make sense that a 64x64 window should capture a whole care.
 
 I chose all color spaces because experimental results showed that to work fairly well and removin channels under different color spaces did reduce performance.
 
 I chose the YCrcb Color space because it seemed to have a good amount of variance across each of the channels.
 
 ##### Final HOG parameters:
-- window_count [`VehicleDetection.window_count`] = 64 # The x/y size of the windows
+- window_size [`VehicleDetection.window_size`] = 64 # The x/y size of the windows
 - pixel_per_cell [`VehicleDetection.pix_per_cell`] = 8 # Number of pixels in a HOG cell
 - cell_per_block [`VehicleDetection.cell_per_block`] = 2 # Number of cells in a single block (
-- orient [`VehicleDetection.orient`] = 9 # Number of gradient bins
+- orient [`VehicleDetection.orient`] = 8 # Number of gradient bins
 - hog_channels [`VehicleDetection.hog_channels`] = [0, 1, 2] # All channels
 - color_space [`VehicleDetection.color`] = YCrCb # Color space used
 
@@ -234,7 +234,7 @@ In order to locate cars across the Image I create a window and slide it left/rig
 
 I define the start/end y locations to scan in `VehicleDetection.ystart` and `VehicleDetection.yend`.
 
-The windows start at the top left. The windows are `window_count` (64x64) wide/tall. Each window will be `step_size` (2) * `pix_per_cell` (16) pixels right or down from the previous window (hog feature space will be smaller than the number of pixels by a factor of `pix_per_cell`). The windows continue in this manner until they reach the bottom corner. The results is around 3000 windows that overlap 75% of the same pixels from the top left of the non-horizon range to the bottom right of the image.
+The windows start at the top left. The windows are `window_size` (64x64) wide/tall. Each window will be `step_size` (2) * `pix_per_cell` (16) pixels right or down from the previous window (hog feature space will be smaller than the number of pixels by a factor of `pix_per_cell`). The windows continue in this manner until they reach the bottom corner. The results is around 3000 windows that overlap 75% of the same pixels from the top left of the non-horizon range to the bottom right of the image.
 
 In order to take care of finding cars at different scales up/down the img I implemented `scaling_detect_blocks`. This function searches for cars left/right in 200 pixel vertical stripes. Each vertical stripe is 50 pixels lower than the last and looks for cars at a scale 0.2 larger. The start/end locations of the stripes are dependant on the `ystart` and `yend` values.
 
