@@ -25,16 +25,33 @@ import matplotlib.pyplot as plt
 class VehicleDetection(Pipeline):
     '''The Pipeline is designed to detect and track objects over time. Specifically cars.
     The first group of functions are related to training the models used in identification.
-    The second group of funtions are related to feature extraction and detecting cars.
+    The second group of functions are related to feature extraction and detecting cars.
     The third group of functions are related to tracking and error correction over time.
 
     Initialize with <data_file> as a trained model pickle file to load it or True to use the default,
             Setting this fault will result in the <data> ("small" or "big") to load. This may take some time.
 
     <n> says how many previous cars to remember, unrelated to heatmap, currently unimplemented
+
+    TODO: Move all feature extraction to a more testable/central spot.
+    TODO: Differentiate different cars with different colors for advanced tracking.
     '''
-    def __init__(self, data_file=False, data="small", n=1):
+    def __init__(self, data_file=False, data="small", n=15):
         super().__init__() # Initialize folder info, etc.
+        ###### Initialize Instance Variables
+        # The location to save any new data files
+        self.data_file = os.path.join(self.results_dir, "detection_models.p")
+
+        # The raw data loaded from self.data and corresponding classes
+        self.img_data = None # XXX: gets reset to none after the data split
+        self.img_class = None
+
+        # The split train/cv/test data
+        self.X = None
+        self.train_X = None
+        self.train_y = None
+        self.test_X = None
+        self.test_y = None
 
         # The Simple Vector Machine trained to detect cars
         self.svm = None
@@ -42,8 +59,18 @@ class VehicleDetection(Pipeline):
         # The scaler trained to scale X input
         self.X_scaler = None
 
-        # The location to save any new data files
-        self.data_file = os.path.join(self.results_dir, "detection_models.p")
+        # The blocks where a car has currently been detected
+        self.current_blocks = None
+
+        # The currently identified car boxes (based on blocks))
+        self.current_cars = None
+
+        # fit-sized queue to store box coordinates of cars detected last n imgs
+        self.cars =  deque(maxlen = n) # TODO: Currently storing the cars in here and not using them
+
+        # Store the last n heatmaps where the car detection met the threshold and average them into heatmap
+        self.heatlist = deque(maxlen = n) 
+        self.heatmap = None # Heatmap image that persists across instance life
 
         # Load pre-trained models or load training data
         if data_file:
@@ -56,67 +83,42 @@ class VehicleDetection(Pipeline):
         else:
             self.data = CarData(data)
             ###### Start of tunable params ######
+            ###### ###### Model dependent tunables
             # Set some HOG specific params for the model 
             self.pix_per_cell = 8 # Number of pixels in an individual HOG cell XXX: Tunable
             self.cell_per_block = 2 # Number of cells in a single block used by HOG XXX: Tunable
             self.orient = 8 # Number of orientation bins. XXX: Tunable
 
-        # A heatmap that is update each time a new image is processed
-        self.heatmap = None # Heatmap image that persists across instance life
-        self.threshold = 3 # The threshold at  which if n blocks overlap it is a car XXX: Tunable
-        # XXX: Removed self.heat_dec = 1 # The amount to reduce each pixel for a new heat map XXX: Tunable
-        self.heatlist = deque(maxlen=5)
+            # Channels to use for hog features
+            self.hog_channels = [0, 1, 2] # XXX: Tunable
 
-        # Model parameters
-        self.spatial_size = (16, 16) # size for spacial features XXX: Tunable - makes sense to make this train_size
-        self.hist_bins = 64 # Number of hist_bins to use XXX: Tunable
-        self.color = 'YCrCb' # Color space to convert images to XXX: Tunable
+            # Channels to use for histogram colors
+            self.hist_channels = [0, 1, 2] # XXX: Tunable
 
-        # Search areas
-        self.ystart = 540 # removes most of the horizion XXX: Tunable
-        self.yend = 690 # removes the front of the car XXX: Tunable
+            # Model parameters
+            self.spatial_size = (16, 16) # size for spacial features XXX: Tunable - makes sense to make this train_size
+            self.hist_bins = 64 # Number of hist_bins to use XXX: Tunable
+            self.color = 'YCrCb' # Color space to convert images to XXX: Tunable
+
+            # Disable features
+            self.hist_dis = False # XXX: Tunable
+            self.spatial_dis = False # XXX: Tunable
+            self.hog_dis = True # XXX: Tunable
+
+            # The shape to resize training images to
+            self.train_shape = (64, 64, 3) # XXX: Tunable
+            self.train_blur = False # XXX: Tunable, blur kernel applied to all images
+
+        ######m ###### Non-Training/Model dependent tunables
+        self.threshold = 2.3 # The threshold at  which if n blocks overlap it is a car XXX: Tunable
 
         # Sliding window variables
-        self.window_count = 64 # Total number of windows XXX: Tunable # TODO: This is called window_count but it is actually window_size
+        self.window_size = 64 # Length/Width of windows XXX: Tunable
         self.step_size = 2 # This did well at 2 and 3 # How many cells to slide right/down for each new window XXX: Tunable
-
-        # Channels to use for hog features
-        self.hog_channels = [0, 1, 2] # XXX: Tunable
-
-        # Channels to use for histogram colors
-        self.hist_channels = [0, 1, 2] # XXX: Tunable
-
-        # Disable features
-        self.hist_dis = False # XXX: Tunable
-        self.spatial_dis = False # XXX: Tunable
-        self.hog_dis = False # XXX: Tunable
-
-        # The shape to resize training images to
-        self.train_shape = (64, 64, 3) # XXX: Tunable
-        self.train_blur = False # XXX: Tunable, blur kernel applied to all images
-
         ###### End of tunable params ######
 
-        # fit-sized queue to store box coordinates of cars detected last n imgs
-        self.cars =  deque(maxlen = n)
-
-        # The currently identifed car boxes/points
-        self.current_cars = None
-
-        # The blocks where a car has currently been detected
-        self.current_blocks = None
-
-        # The raw data loaded from self.data and corresponding classes
-        self.img_data = None # XXX: gets reset to none after the data split
-        self.img_class = None
-
-        # The split train/cv/test data
-        self.train_X = None
-        self.train_y = None
-        self.test_X = None
-        self.test_y = None
-
     def validate_data(self):
+        '''Validate class data is correct'''
         assert self.svm is not None
         assert self.X_scaler is not None
         assert isinstance(self.cell_per_block, int)
@@ -132,6 +134,10 @@ class VehicleDetection(Pipeline):
         assert isinstance(self.hog_dis, bool) 
         assert not (self.hog_dis and self.spatial_dis and self.hist_dis)
         assert self.color is not None
+        assert self.spatial_size is not None and len(self.spatial_size) == 2
+        assert self.hist_bins is not None and self.hist_bins >= 1
+        assert self.train_blur is not None and (self.train_blur == False or len(self.train_blur) == 2)
+        assert self.train_shape is not None and len(self.train_shape) == 3
 
     def load_pickle(self, data_file):
         '''Load a pickle file and extract the model data'''
@@ -148,6 +154,10 @@ class VehicleDetection(Pipeline):
         self.spatial_dis = models['spatial_dis']
         self.hog_dis = models['hog_dis']
         self.color = models['color']
+        self.hist_bins = models['hist_bins']
+        self.spatial_size = models['spatial_size']
+        self.train_blur = models['train_blur']
+        self.train_shape = models['train_shape']
         self.validate_data()
 
     def save_pickle(self, data_file):
@@ -160,37 +170,33 @@ class VehicleDetection(Pipeline):
             'hist_dis': self.hist_dis, 'spatial_dis': self.spatial_dis,
             'hog_dis': self.hog_dis,
             'hist_channels': self.hist_channels,
-            'color': self.color }, open(data_file, 'wb'))
+            'color': self.color, 'spatial_size': self.spatial_size,
+            'hist_bins': self.hist_bins, 'train_blur': self.train_blur,
+            'train_shape': self.train_shape }, open(data_file, 'wb'))
 
     def train(self):
         '''Top level function to create, train, and save the models'''
         print("Initializing models.")
-        self.svm = LinearSVC()
-        self.X_scaler = StandardScaler()
-
+        self.init_models()
         print("Reading in all image data")
         self.get_data()
-
         print("Extracting features from image data")
         self.extract_data_features()
-
-        print("Training the X scaler")
-        self.X_scaler.fit(np.asarray(self.X).astype(np.float64))
-
-        print("Scaling the %d X values" %(len(self.X)))
-        self.X_scaler.transform(self.X)
-
+        print("Training the X scaler and scaling all %d X values" %(len(self.X)))
+        self.scale_data()
         print("Splitting X, y features into train and test")
         self.split_data()
-
         print("Training the SVM with train data of length %d" %(len(self.train_X)))
         self.train_model()
-
         print("Scoring the SVM")
         self.score_model()
-
         print("Saving data to %s" %(self.data_file))
         self.save_pickle(self.data_file)
+
+    def init_models(self):
+        '''Initialize Models'''
+        self.svm = LinearSVC()
+        self.X_scaler = StandardScaler()
 
     def get_data(self):
         '''Read in all the files stored in self.data as raw pixels'''
@@ -222,8 +228,9 @@ class VehicleDetection(Pipeline):
 
         # Iterate over all images
         for img in self.img_data:
-            # Convert color space
-            img = car_helper.convert_img(img, self.color, src="BGR", blur=self.train_blur) # training images are read with cv2 and thus BGR
+            # Convert color space and apply blur
+            img = car_helper.convert_img(img, self.color, src="BGR",
+                    blur=self.train_blur) # training images are read with cv2 and thus BGR
 
             # Compute hog features for each color channel
             hogs = self.get_hog_features(img, self.hog_channels, self.orient,
@@ -242,18 +249,29 @@ class VehicleDetection(Pipeline):
             # Set class variables  
             self.X.append(X)
 
-        # Remove the raw data once features have been extraced
+        # Remove the raw data once features have been extracted
         self.img_data = None
         assert len(self.img_class) == len(self.X)
         self.print_data_stats()
 
     def print_data_stats(self):
         '''print some data about the training features'''
-        print("color histogram (%d) features disabled: %r" %(self.hist_bins, self.hist_dis))
-        print("spatial features (%s) disabled: %r" %(str(self.spatial_size), self.spatial_dis))
-        print("HOG features size-%d orient-%d disabled: %r" %(self.window_count, self.orient, self.hog_dis))
-        print("Feature shape: %s color: %s" %(str(self.X[0].shape), self.color))
-        print("Total # of samples: %d" %len(self.X))
+        print("color histogram (%d) features disabled: %r" %(self.hist_bins,
+                self.hist_dis))
+        print("spatial features (%s) disabled: %r" %(str(self.spatial_size),
+                self.spatial_dis))
+        print("HOG features size-%d orient-%d disabled: %r" %(self.window_size,
+                self.orient, self.hog_dis))
+        if self.X is not None:
+            print("Feature shape: %s color: %s" %(str(self.X[0].shape), self.color))
+            print("Total # of samples: %d" %len(self.X))
+
+    def scale_data(self):
+        '''Fit and scale later
+        TODO: Update this to better suit unit tests
+        '''
+        self.X_scaler.fit(np.asarray(self.X).astype(np.float64))
+        self.X_scaler.transform(self.X)
 
     def split_data(self, test=0.33):
         '''Split data into train/test/validation'''
@@ -275,9 +293,11 @@ class VehicleDetection(Pipeline):
         assert count == len(self.train_X) + len(self.test_X)
 
     def train_model(self):
+        '''Train the model on the loaded/fit data'''
         self.svm.fit(self.train_X, self.train_y)
 
     def score_model(self):
+        '''Score the trained model on the loaded/split data'''
         acc = self.svm.score(self.train_X, self.train_y)
         print("SVM train accuracy of %0.4f" %acc)
         acc = self.svm.score(self.test_X, self.test_y)
@@ -304,10 +324,12 @@ class VehicleDetection(Pipeline):
         # Detect cars in this image
         self.scaling_detect_blocks(img)
         if debug_all:
-            blocks_img = car_helper.draw_boxes(original_img, self.current_blocks,  (52, 255, 20) ,thick=10)
+            blocks_img = car_helper.draw_boxes(original_img,
+                    self.current_blocks,  (52, 255, 20) ,thick=10)
             imgs['blocks'] = blocks_img
         elif blocks:
-            return car_helper.draw_boxes(original_img, self.current_blocks, (52, 255, 20) ,thick=15)
+            return car_helper.draw_boxes(original_img, self.current_blocks,
+                    (52, 255, 20) ,thick=15)
 
         # Create a heat map based on the detected car blocks
         self.calculate_heat(img)
@@ -329,25 +351,16 @@ class VehicleDetection(Pipeline):
 
     def scaling_detect_blocks(self, img, debug=False):
         '''Iterate from top to bottom of the "lane range" and detect cars of
-        increaseing size
+        increasing size. Return the number of windows searched.
         '''
-
-        count = self.detect_blocks(img, debug=debug, ystart=360, yend=480, scale=1)
-        count = self.detect_blocks(img, debug=debug, ystart=400, yend=615, scale=2, count=count)
-        count = self.detect_blocks(img, debug=debug, ystart=400, yend=720, scale=3, count=count)
+        # TODO: Make this less hard coded but still effective/intuitive.
+        count = self.detect_blocks(img, debug=debug, ystart=360, yend=480,
+                scale=1)
+        count = self.detect_blocks(img, debug=debug, ystart=400, yend=615,
+                scale=2, count=count)
+        count = self.detect_blocks(img, debug=debug, ystart=400, yend=720,
+                scale=3, count=count)
         return count # Total number of windows searched
-
-        '''
-        scale = 1
-        for end in range(self.ystart, img.shape[0], 50):
-            start = end - 200
-            self.detect_blocks(img, debug=debug, ystart=start, yend=end,
-                    scale=scale)
-            scale += 0.2
-        # Do one last check across the patch for the largest car size
-        self.detect_blocks(img, debug=debug, ystart=self.ystart,
-                yend=img.shape[0], scale=scale)
-        '''
 
     def detect_blocks(self, img, ystart=None, yend=None, scale=1, count=0, debug=False):
         '''Generates hog features for entire img, slides over each window and 
@@ -359,39 +372,32 @@ class VehicleDetection(Pipeline):
 
         HOG will generate a single gradient value for every <self.pix_per_cell> 
             by <self.pix_per_cell> square  Blocks are used to navigate the HOG features
-        A total of <window_count> windows will be created
+        A total of <window_size> windows will be created
             Each window will be <step_size> cells (<step_size> * self.pix_per_cell pixels) 
                     right/down from the previous window
         '''
         # Verify we have been trained
         assert self.svm is not None
         assert self.X_scaler is not None
+        assert ystart is not None and yend is not None
+        assert yend <= img.shape[0] and ystart >= 0
 
-        # Don't scan the horizon for cars; they don't fly yet.
-        if ystart is None or yend is None:
-            ystart = self.ystart
-            yend = self.yend
+        # Snip out the suitable section of the image (non-horizon))
         img = img[ystart:yend,:,:]
 
-        # Don't operate on a 0 chunk of image
+        # Don't operate on a 0 chunk of image (this can be the case with transparent backgrounds)
         if img.shape[0] == 0 or img.shape[1] == 0:
             print("WARN: Invalid image size passed to detect_blocks")
             return count # TODO: clean this up
 
-        # Set the number of windows and steps between windows
-        window_count = self.window_count
-        step_size = self.step_size
-        
         # Verify image is scaled to 255 not 1
         if np.max(img) <= 1:
             img = img * 255
 
-        # TODO: Automatically  scale up towards the front and down towards the back
         # Scale the image up/down to account for different sized objects up/down the horizon.
-        patch_shape = img.shape
         if scale != 1: # Save some compute if no scaling is to be done
-            img = cv2.resize(img, (np.int(patch_shape[1]/scale),
-                                                 np.int(patch_shape[0]/scale)))
+            img = cv2.resize(img, (np.int(img.shape[1]/scale),
+                                                 np.int(img.shape[0]/scale)))
 
         # Compute image-wide hog features for each channel
         hogs = self.get_hog_features(img, self.hog_channels, self.orient,
@@ -399,15 +405,14 @@ class VehicleDetection(Pipeline):
     
         # Define blocks and steps based on img size
         # TODO: Increment these by +2 to get the last part of the screen, then fix the bug where this causes sizing issues in the transform
-
         nxblocks = (img.shape[1] // self.pix_per_cell) - self.cell_per_block + 1 # Round up +1, account for exclusive range +1
         nyblocks = (img.shape[0] // self.pix_per_cell) - self.cell_per_block + 1 # Round up +1, account for exclusive range +1
         nfeat_per_block = self.orient * self.cell_per_block**2
 
         # Calculate number of steps in the y/x directions and # blocks per window
-        window_blocks = (window_count // self.pix_per_cell) - self.cell_per_block + 1
-        nxsteps = (nxblocks - window_blocks) // step_size + 1 # Round up
-        nysteps = (nyblocks - window_blocks) // step_size + 1 # Round up
+        window_blocks = (self.window_size // self.pix_per_cell) - self.cell_per_block + 1
+        nxsteps = (nxblocks - window_blocks) // self.step_size + 1 # Round up
+        nysteps = (nyblocks - window_blocks) // self.step_size + 1 # Round up
 
         # Iterate over each x/y block pair
         for xb in range(nxsteps):
@@ -416,14 +421,14 @@ class VehicleDetection(Pipeline):
                 count += 1
 
                 # Iterate from 0 to x/y and multipl
-                ypos = yb * step_size
-                xpos = xb * step_size
+                ypos = yb * self.step_size
+                xpos = xb * self.step_size
 
                 # Calculate positions used in img (hog collapsed px x px cells into single values)
                 xleft = xpos * self.pix_per_cell
                 ytop = ypos * self.pix_per_cell
 
-                # Extract and stack HOG features for this patch
+                # Extract and stack HOG features for this patch from pre-calculated values
                 if hogs is None:
                     hog_features = None
                 else:
@@ -432,17 +437,17 @@ class VehicleDetection(Pipeline):
                         hog_ftr = hog_ftr[ypos:ypos + window_blocks,
                                   xpos:xpos + window_blocks].ravel()
                         hog_features.append(hog_ftr)
-                hog_X = self.concat_ftrs(hog_features)
 
                 # Extract the image patch for this block and resize it to model size
-                subimg = cv2.resize(img[ytop:ytop + window_count,
-                        xleft:xleft + window_count], self.train_shape[0:2])
+                subimg = cv2.resize(img[ytop:ytop + self.window_size,
+                        xleft:xleft + self.window_size], self.train_shape[0:2])
 
-                # Get spatial and color features from the image patch
+                # Get hog, spatial and color features from the image patch
                 spatial_X = self.bin_spatial(subimg, self.spatial_size,
                         disabled=self.spatial_dis)
                 hist_X = self.color_hist(subimg, self.hist_channels,
                         self.hist_bins, disabled=self.hist_dis)
+                hog_X = self.concat_ftrs(hog_features)
 
                 # Stack and flatten features, then scale them
                 X = self.X_scaler.transform(self.get_enabled_ftrs(
@@ -455,10 +460,10 @@ class VehicleDetection(Pipeline):
                 if debug: 
                     prediction = True
 
-                # IF a car was detected
+                # If a car was detected
                 if prediction == 1:
                     # calculate the scaled window size
-                    window_size = np.int(window_count * scale)
+                    window_size = np.int(self.window_size * scale)
 
                     # Calculate the top/bottom/left/right corner points
                     xl = np.int(xleft * scale)
@@ -520,7 +525,7 @@ class VehicleDetection(Pipeline):
             box = ((xt, yl),(xb, yr))
             self.current_cars.append(box)
 
-        self.cars.extendleft(self.current_cars)
+        self.cars.appendleft(self.current_cars)
 
         # Return labels[0] as an image
         if debug:
@@ -544,7 +549,9 @@ class VehicleDetection(Pipeline):
         return hogs
 
     def bin_spatial(self, img, spatial_size=(32, 32), debug=False, disabled=False):
-        '''Given an img return a resized and flattened vector'''
+        '''Given an img return a resized and flattened vector
+        debug returns a displayable 2D image rather than flat X vector.
+        '''
         if disabled:
             return None
         ftr = cv2.resize(img, spatial_size)
@@ -570,7 +577,7 @@ class VehicleDetection(Pipeline):
 
     def concat_ftrs(self, feature_list, ravel=True):
         '''Provide a consistent way of concatenating and flattening feature lists'''
-        if feature_list is None: # TODO: Clean this up, used for hog disabled
+        if feature_list is None: # Used for HOG features
             return None
         ftrs = np.concatenate(feature_list)
         if ravel:
@@ -583,21 +590,27 @@ class VehicleDetection(Pipeline):
         return self.concat_ftrs(valid_features)
 
 
+# Test code and writeup supporting code
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     import glob
     import time
 
+    # Simple training/debug options
+    do_hog = True
+    do_features = True
+    pretrained = True
+    size = "big"
+
     imgs = glob.glob(os.path.join("test_img",  "*"))
 
-    pretrained = False
-    size = "big"
     vd = VehicleDetection(pretrained, size)
     if not pretrained:
         vd.train()
+    vd.print_data_stats()
 
     # Explore the HOG Feature params
-    if False:
+    if do_hog:
         img_file = imgs[1]
         img = cv2.imread(img_file)
         cv2.imwrite(os.path.join(vd.results_dir, "test-image.jpg"), img)
@@ -634,9 +647,7 @@ if __name__ == '__main__':
         color_img = car_helper.convert_img(img, vd.color, src='BGR', blur=vd.train_blur)
         plt.imshow(color_img)
 
-        if False: # Quick flag to remove timely debug
-            # TODO: Move all this feature extracting to a single spot
-
+        if do_features: # Quick flag to remove timely debug
             # Plot spatial features
             spatial_X = vd.bin_spatial(color_img, vd.spatial_size, debug=True)
             f.add_subplot(3,4,3)
@@ -663,22 +674,21 @@ if __name__ == '__main__':
                 hogs.append(hogs_debug[idx][0])
                 plt.imshow(hogs_debug[idx][1])
 
-            '''
-            # TODO: Figure out an intuitive way to display these combined feature sets
             # Combine color_hist_features
             f.add_subplot(3,4,8)        
             hist_X = vd.concat_ftrs((hist_features[0][0], hist_features[1][0], hist_features[2][0]))
-            plt.plot(hist_X) # TODO:
+            plt.plot(hist_X) 
 
             # Combine hog features and plot them
             f.add_subplot(3,4,12)
             hog_X = vd.concat_ftrs((hogs[0][0], hogs[1][0], hogs[2][0]))
-            plt.plot(hog_X) # TODO:
+            plt.plot(hog_X)
 
-            # Show X_scaled feature image # TODO:
+            # Show X_scaled feature image
             f.add_subplot(3,4,3)
-            scaled_ftrs = vd.X_scaler.transform(vd.concat_ftrs((spatial_X, hist_X, hog_X)).reshape(1, -1)) # TODO: copy/paste code
-            plt.plot(scaled_ftrs)
+            # TODO: This debug is working on a full image, the transform only works on output from the vd.train_shape image
+            # scaled_ftrs = vd.X_scaler.transform(vd.concat_ftrs((spatial_X, hist_X, hog_X)).reshape(1, -1))
+            # plt.plot(scaled_ftrs)
             plt.savefig(os.path.join(vd.results_dir, "%d-debug-features.jpg" %i))
             plt.close()
 
@@ -687,7 +697,6 @@ if __name__ == '__main__':
             plt.title("Steps of vehicle Detection")
             f.add_subplot(2,3,1)
             plt.imshow(img)
-            '''
 
             # Show all the Windows we are searching
             f.add_subplot(2,3,2)
@@ -728,7 +737,7 @@ if __name__ == '__main__':
             f.add_subplot(2,3,5)
             labels_img = vd.detect_cars(img, debug=True)
             cv2.imwrite(os.path.join(vd.results_dir, "%d-debug-labels.jpg"%i), labels_img)
-            plt.imshow(labels_img, cmap='hot')
+            plt.imshow(labels_img, cmap='gray')
             
             # Show the final car outlines
             f.add_subplot(2,3,6)
