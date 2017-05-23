@@ -77,41 +77,42 @@ class CarWorld(Pipeline):
 
 if __name__ == '__main__':
     cw = CarWorld()
-    # Run test videos through pipeline
-    input_vid = os.path.join("test_vid",'tiny-1.mp4')
-    output_vid = os.path.join(cw.results_dir, "tiny_1_output.mp4")
-    cw.process_video(input_vid, output_vid)
+    run = "" # Pre-fix files with run name
 
     # Run test videos through pipeline
     input_vid = os.path.join("test_vid",'tiny-1.mp4')
-    output_vid = os.path.join(cw.results_dir, "tiny_1_output_debug.mp4")
-    cw.process_video(input_vid, output_vid, debug_all=True)
+    output_vid = os.path.join(cw.results_dir, run + "tiny_1_output.mp4")
+    cw.process_video(input_vid, output_vid)
+
 
     # Run test videos through pipeline
     input_vid = os.path.join("test_vid",'tiny-2.mp4')
-    output_vid = os.path.join(cw.results_dir, "tiny_2_output.mp4")
+    output_vid = os.path.join(cw.results_dir, run + "tiny_2_output.mp4")
     cw.process_video(input_vid, output_vid)
 
     # Run test videos through pipeline
     input_vid = os.path.join("test_vid", "short-2.mp4")
-    output_vid = os.path.join(cw.results_dir, "small_2_output.mp4")
+    output_vid = os.path.join(cw.results_dir, run + "small_2_output.mp4")
     cw.process_video(input_vid, output_vid)
 
     # Run test videos through pipeline
     input_vid = os.path.join("test_vid",'project_video.mp4')
-    output_vid = os.path.join(cw.results_dir, "project_video_output.mp4")
+    output_vid = os.path.join(cw.results_dir, run + "project_video_output.mp4")
     cw.process_video(input_vid, output_vid)
 
-    # Run test videos through pipeline
+    input_vid = os.path.join("test_vid",'tiny-1.mp4')
+    output_vid = os.path.join(cw.results_dir, run + "tiny_1_output_debug.mp4")
+    cw.process_video(input_vid, output_vid, debug_all=True)
+
     input_vid = os.path.join("test_vid",'project_video.mp4')
-    output_vid = os.path.join(cw.results_dir, "project_video_output_debug.mp4")
+    output_vid = os.path.join(cw.results_dir, run + "project_video_output_debug.mp4")
     cw.process_video(input_vid, output_vid, debug_all=True)
 
     input_vid = os.path.join("test_vid",'challenge_video.mp4')
-    output_vid = os.path.join(cw.results_dir, "challenge_video_output.mp4")
+    output_vid = os.path.join(cw.results_dir, run + "challenge_video_output.mp4")
     cw.process_video(input_vid, output_vid)
 
     input_vid = os.path.join("test_vid",'harder_challenge_video.mp4')
-    output_vid = os.path.join(cw.results_dir, "harder_challenge_video_output.mp4")
+    output_vid = os.path.join(cw.results_dir, run + "harder_challenge_video_output.mp4")
     cw.process_video(input_vid, output_vid)
   
